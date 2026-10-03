@@ -1,0 +1,9 @@
+tau_avail: 0.3
+i_max_dbm: -95.0
+alpha: 1.0
+beta: 2.0
+release_margin_mhz: 5.0
+theta_c: 0.8
+q_min: 0.8
+min_channels: 1
+weights: [1.0, 1.0, 1.0, 1.0]

@@ -1,0 +1,23 @@
+sim:
+  n_mno: 4
+  n_channels: 16
+  channel_bw_mhz: 20
+  interval_min: 5
+  days: 14
+  start_ts: "2026-01-05T00:00:00"
+  d_cap_mhz: 160
+  se_ref: 4.0
+  p_link_ref_dbm: -80
+  u_peak: 250
+  r_user_mbps: 0.8
+  seed_train: 42
+  seed_unseen: 2026
+
+split:
+  train_days: 10
+  val_days: 2
+  test_days: 2
+
+windows:
+  L: 12
+  H: 3

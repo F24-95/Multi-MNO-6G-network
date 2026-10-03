@@ -1,0 +1,73 @@
+scenarios:
+  normal:
+    scen_mult: 1.0
+    spike_lambda: 0.1
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Standard balanced operating conditions"
+  low_traffic:
+    scen_mult: 0.4
+    spike_lambda: 0.1
+    pu_duty_min: 0.05
+    pu_duty_max: 0.15
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Off-peak or low user density scenario"
+  high_traffic:
+    scen_mult: 1.8
+    spike_lambda: 0.3
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Peak-hour high traffic load"
+  traffic_spike:
+    scen_mult: 1.0
+    spike_lambda: 2.0
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Frequent sudden surges in operator demand"
+  spectrum_shortage:
+    scen_mult: 1.0
+    spike_lambda: 0.1
+    pu_duty_min: 0.55
+    pu_duty_max: 0.80
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Heavy primary user occupancy across spectrum"
+  uneven_mno_demand:
+    scen_mult: 1.0
+    spike_lambda: 0.1
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Asymmetric market share and operator requests"
+  noise_uncertainty:
+    scen_mult: 1.0
+    spike_lambda: 0.1
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 3.0
+    p_burst: 0.01
+    description: "High noise measurement variance and estimation error"
+  congestion:
+    scen_mult: 1.6
+    spike_lambda: 0.5
+    pu_duty_min: 0.25
+    pu_duty_max: 0.55
+    sigma_u: 0.5
+    p_burst: 0.05
+    description: "High traffic combined with frequent interference bursts"
+  demand_shift:
+    scen_mult: 1.0
+    spike_lambda: 0.1
+    pu_duty_min: 0.15
+    pu_duty_max: 0.45
+    sigma_u: 0.5
+    p_burst: 0.01
+    description: "Dynamic temporal shifts in operator peaks"
