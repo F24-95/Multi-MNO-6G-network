@@ -2,21 +2,21 @@
   "project": "AI-Based Dynamic Spectrum Sharing for Multi-MNO 6G Networks",
   "initialized": "2026-10-03",
   "current_milestone": 1,
-  "current_phase": 1,
-  "current_step": 1,
-  "workflow_state": "planning_complete",
-  "next_action": "Run /gsd-plan-phase 1 to start execution of Phase 1 (Environment Setup)",
+  "current_phase": 3,
+  "current_step": 6,
+  "workflow_state": "in_progress",
+  "next_action": "Execute Phase 3: Step 06 (Data Preprocessing Pipeline: clean, scale, split, window)",
   "milestones": {
-    "M1": { "name": "Foundation", "phases": "1-4", "status": "not_started" },
+    "M1": { "name": "Foundation", "phases": "1-4", "status": "in_progress" },
     "M2": { "name": "AI Models", "phases": "5-8", "status": "not_started" },
     "M3": { "name": "Allocation System", "phases": "9-12", "status": "not_started" },
     "M4": { "name": "Backend & Dashboard", "phases": "13-15", "status": "not_started" },
     "M5": { "name": "Validation & Delivery", "phases": "16-20", "status": "not_started" }
   },
   "checkpoints": {
-    "P0": "not_done",
-    "P1": "not_done",
-    "P2": "not_done",
+    "P0": "passed",
+    "P1": "passed",
+    "P2": "passed",
     "P3": "not_done",
     "P4": "not_done",
     "P5": "not_done",
@@ -31,20 +31,5 @@
     "P15": "not_done",
     "P16": "not_done",
     "P17_18": "not_done"
-  },
-  "decisions_log": [
-    { "id": "D-01/A1", "summary": "VAE-GMM unsupervised, per (step,channel), pu_state eval-only" },
-    { "id": "D-02/A2", "summary": "AE trains after VAE-GMM, latent z_ae feeds forecaster" },
-    { "id": "D-03/A3", "summary": "GAN offline, minority windows, ablation-gated" },
-    { "id": "D-04/A4", "summary": "Forecaster: H=3, M=4 jointly, one class for LSTM+GRU" },
-    { "id": "D-05/A5", "summary": "Decision Engine: deterministic constrained allocator, no RL" },
-    { "id": "D-06/A6", "summary": "GAN fairness = augmentation robustness + engine fairness (confirm supervisor)" },
-    { "id": "D-07/A9", "summary": "PyTorch only, scikit-learn for GMM/scalers" },
-    { "id": "D-08/A8", "summary": "Decision at t applies to t+1" },
-    { "id": "D-09", "summary": "Metrics core + static baseline built before Decision Engine" },
-    { "id": "D-10/A10", "summary": "Parquet/NumPy for ML, PostgreSQL for results/dashboard" },
-    { "id": "D-11", "summary": "Background thread for experiments, no Celery/Redis" },
-    { "id": "D-12", "summary": "Chart.js vendored" },
-    { "id": "D-13/A7", "summary": "AE = denoising bottleneck autoencoder" }
-  ]
+  }
 }
