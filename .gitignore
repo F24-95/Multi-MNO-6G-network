@@ -1,9 +1,9 @@
 .venv/
 .env
-data/
-models/
-experiments/
-logs/
+/data/
+/models/
+/experiments/
+/logs/
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
