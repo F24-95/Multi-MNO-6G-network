@@ -1,8 +1,5 @@
-import os
 import sys
-from dotenv import load_dotenv
-
-load_dotenv()
+from dss.database.connection import get_connection, get_db_url
 
 print(f"Python: {sys.version}")
 
@@ -15,19 +12,17 @@ for pkg in packages:
     except Exception as e:
         print(f"[{pkg.upper()} FAIL] Error: {e}")
 
-# Database Check
-db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/dss_db")
+# Database check — uses connection.py as single source of truth
 try:
-    import psycopg2
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
+    conn = get_connection()
+    cur  = conn.cursor()
     cur.execute("SELECT 1;")
     res = cur.fetchone()
     cur.close()
     conn.close()
     if res and res[0] == 1:
-        print("[DATABASE OK] PostgreSQL connection and SELECT 1 succeeded.")
+        print(f"[DATABASE OK] Connected to: {get_db_url()}")
     else:
-        print(f"[DATABASE FAIL] Unexpected query result: {res}")
+        print(f"[DATABASE FAIL] Unexpected result: {res}")
 except Exception as e:
-    print(f"[DATABASE FAIL] Connection failed: {e}")
+    print(f"[DATABASE FAIL] {e}")

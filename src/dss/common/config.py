@@ -3,11 +3,10 @@ import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
-from dotenv import load_dotenv
 
 from dss.common.paths import PROJECT_ROOT
+from dss.database.connection import get_db_url  # single source for DATABASE_URL
 
-load_dotenv()
 
 @dataclass(frozen=True)
 class SimConfig:
@@ -25,16 +24,19 @@ class SimConfig:
     seed_train: int = 42
     seed_unseen: int = 2026
 
+
 @dataclass(frozen=True)
 class SplitConfig:
     train_days: int = 10
     val_days: int = 2
     test_days: int = 2
 
+
 @dataclass(frozen=True)
 class WindowsConfig:
     L: int = 12
     H: int = 3
+
 
 @dataclass(frozen=True)
 class AllocationConfig:
@@ -48,6 +50,7 @@ class AllocationConfig:
     min_channels: int = 1
     weights: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
 
+
 @dataclass(frozen=True)
 class Config:
     sim: SimConfig
@@ -59,13 +62,16 @@ class Config:
     env: str = "dev"
     database_url: str = ""
 
+
 def load_yaml(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Configuration file not found: {path}")
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
+
 _CONFIG_CACHE: Config | None = None
+
 
 def get_config(force_reload: bool = False) -> Config:
     global _CONFIG_CACHE
@@ -74,17 +80,17 @@ def get_config(force_reload: bool = False) -> Config:
 
     cfg_dir = PROJECT_ROOT / "configs"
     default_cfg = load_yaml(cfg_dir / "default.yaml")
-    alloc_cfg = load_yaml(cfg_dir / "allocation.yaml")
-    scen_cfg = load_yaml(cfg_dir / "scenarios.yaml")
-    models_cfg = load_yaml(cfg_dir / "models.yaml")
+    alloc_cfg   = load_yaml(cfg_dir / "allocation.yaml")
+    scen_cfg    = load_yaml(cfg_dir / "scenarios.yaml")
+    models_cfg  = load_yaml(cfg_dir / "models.yaml")
 
-    sim = SimConfig(**default_cfg.get("sim", {}))
-    split = SplitConfig(**default_cfg.get("split", {}))
-    windows = WindowsConfig(**default_cfg.get("windows", {}))
+    sim        = SimConfig(**default_cfg.get("sim", {}))
+    split      = SplitConfig(**default_cfg.get("split", {}))
+    windows    = WindowsConfig(**default_cfg.get("windows", {}))
     allocation = AllocationConfig(**alloc_cfg)
 
-    env = os.getenv("DSS_ENV", "dev")
-    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/dss_db")
+    env    = os.getenv("DSS_ENV", "dev")
+    db_url = get_db_url()  # reads DATABASE_URL — load_dotenv() was already called in connection.py
 
     _CONFIG_CACHE = Config(
         sim=sim,
