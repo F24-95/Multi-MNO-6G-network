@@ -8,8 +8,8 @@ Har completed step aur phase ka comprehensive technical manual yahan documented 
 | **Phase 2** | Steps 04–05 | Markov PU, RF Propagation, Poisson Demand Models, 9 Scenarios Generator | [STEP_04_TO_05_PHASE_2_SYNTHETIC_DATA_GENERATION.md](STEP_04_TO_05_PHASE_2_SYNTHETIC_DATA_GENERATION.md) | ✅ Complete | 13/13 |
 | **Phase 3** | Step 06 | Cleaning, Leak-Proof Scaler Fitting (Train Only), Chronological Splits, Windows | [STEP_06_PHASE_3_PREPROCESSING_AND_SPLIT.md](STEP_06_PHASE_3_PREPROCESSING_AND_SPLIT.md) | ✅ Complete | 5/5 |
 | **Phase 4** | Steps 07–09 | Unsupervised VAE-GMM Spectrum Sensing, Posterior $p_{busy}(T,C)$, Detection Metrics | [STEP_07_TO_09_PHASE_4_VAE_GMM_SPECTRUM_SENSING.md](STEP_07_TO_09_PHASE_4_VAE_GMM_SPECTRUM_SENSING.md) | ✅ Complete | 8/8 |
-| **Phase 5** | Steps 10–12 | Autoencoder Feature Extraction ($16 \to 4$ compression) & Feature Assembly ($F=20$) | *Next in Pipeline* | ⏳ Pending | - |
-| **Phase 6** | Steps 13–15 | GAN Minority Window Augmentation | *Upcoming* | ⏳ Pending | - |
+| **Phase 5** | Steps 10–12 | Denoising Autoencoder ($64 \to 8$), Feature Assembler ($F=20$), Forecast Windows ($X, Y$) | [STEP_10_TO_12_PHASE_5_AUTOENCODER_AND_FEATURE_ASSEMBLER.md](STEP_10_TO_12_PHASE_5_AUTOENCODER_AND_FEATURE_ASSEMBLER.md) | ✅ Complete | 8/8 |
+| **Phase 6** | Steps 13–15 | GAN Minority Window Augmentation | *Next in Pipeline* | ⏳ Pending | - |
 | **Phase 7** | Steps 16–18 | Dual LSTM/GRU Time-Series Forecasters ($L=12 \to H=3$) | *Upcoming* | ⏳ Pending | - |
 | **Phase 8** | Steps 19–21 | Decision Engine, Dynamic Bandwidth Allocation ($D_{cap}=160$ MHz), Fairness | *Upcoming* | ⏳ Pending | - |
 | **Phase 9** | Steps 22–24 | Experiment Runner, Robustness & Ablation Studies | *Upcoming* | ⏳ Pending | - |
@@ -18,7 +18,7 @@ Har completed step aur phase ka comprehensive technical manual yahan documented 
 ---
 
 ### Global Test Suite Verification
-Total automated unit & validation tests currently active and passing: **39 / 39 (100% PASSED)**
+Total automated unit & validation tests currently active and passing: **47 / 47 (100% PASSED)**
 ```bash
 .\.venv\Scripts\python -m pytest tests/ -v
 ```
