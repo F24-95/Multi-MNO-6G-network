@@ -232,15 +232,15 @@
                                 <div class="map-metrics">
                                     <div class="m-stat">
                                         <span class="m-label">Total Regions</span>
-                                        <span class="m-val">12</span>
+                                        <span class="m-val" id="mapTotalRegions">12</span>
                                     </div>
                                     <div class="m-stat">
                                         <span class="m-label">Active Sectors</span>
-                                        <span class="m-val">48</span>
+                                        <span class="m-val" id="mapActiveSectors">48</span>
                                     </div>
                                     <div class="m-stat">
                                         <span class="m-label">Spectrum Pool</span>
-                                        <span class="m-val">320 MHz</span>
+                                        <span class="m-val" id="mapSpectrumPool">1,000 MHz</span>
                                     </div>
                                 </div>
                             </div>
@@ -298,19 +298,19 @@
                         <div class="status-rows-list">
                             <div class="status-row">
                                 <span class="s-name">🤖 DRL Agent</span>
-                                <span class="s-badge green">🟢 Running</span>
+                                <span class="s-badge green" id="statusDrlAgent">🟢 Running</span>
                             </div>
                             <div class="status-row">
                                 <span class="s-name">📡 Spectrum Pool Manager</span>
-                                <span class="s-badge green">🟢 Active</span>
+                                <span class="s-badge green" id="statusPoolManager">🟢 Active</span>
                             </div>
                             <div class="status-row">
                                 <span class="s-name">🗄️ Database (PostgreSQL)</span>
-                                <span class="s-badge green" id="dbStatusBadge">🟢 Connected</span>
+                                <span class="s-badge green" id="statusDb">🟢 Connected</span>
                             </div>
                             <div class="status-row">
                                 <span class="s-name">⚡ Network Simulation</span>
-                                <span class="s-badge green">🟢 Running</span>
+                                <span class="s-badge green" id="statusNetSim">🟢 Running</span>
                             </div>
                         </div>
                     </div>
@@ -368,29 +368,8 @@
                             <h3>🧠 AI Model Insights</h3>
                             <a href="#analytics" class="view-all-link switch-tab-link" data-target="view-analytics">Analytics</a>
                         </div>
-                        <div class="insights-body">
-                            <div class="insight-item">
-                                <span class="insight-check">✅</span>
-                                <div class="insight-text">
-                                    <p class="i-title">Predicted high demand in next 2 hours (Jio 6G - n78)</p>
-                                    <span class="i-badge">Confidence: 92%</span>
-                                </div>
-                            </div>
-                            <div class="insight-item">
-                                <span class="insight-check">✅</span>
-                                <div class="insight-text">
-                                    <p class="i-title">Suggesting reallocation for better fairness</p>
-                                    <span class="i-badge text-green">Improvement: +12% BSS</span>
-                                </div>
-                            </div>
-                            <div class="insight-item">
-                                <span class="insight-check">✅</span>
-                                <div class="insight-text">
-                                    <p class="i-title">Detected underutilized spectrum in Region-3</p>
-                                    <span class="i-badge text-blue">Potential Gain: 18 MHz</span>
-                                </div>
-                            </div>
-
+                        <div class="insights-body" id="aiInsightsContainer">
+                            <!-- Dynamic Insights injected by JS -->
                             <div class="ai-tip-box">
                                 <span class="tip-icon">💡</span>
                                 <p>AI is continuously learning from network conditions to optimize spectrum sharing in real-time.</p>

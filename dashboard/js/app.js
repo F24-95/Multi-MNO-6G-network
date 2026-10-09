@@ -376,20 +376,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 5. 16-Channel Heatmap Renderer for Spectrum Overview & Main Dashboard (Direct PostgreSQL Data)
-    async function renderFullChannelGrid() {
+    async function renderFullChannelGrid(directChannels) {
         const gridEl = document.getElementById("fullChannelGrid");
         const mainGridEl = document.getElementById("mainDashboardChannelGrid");
 
         try {
-            const res = await fetch("/api/spectrum_channels");
-            if (!res.ok) return;
-            const data = await res.json();
+            let channels = directChannels;
+            if (!channels) {
+                const res = await fetch("/api/spectrum_channels");
+                if (!res.ok) return;
+                const data = await res.json();
+                channels = data.channels;
+            }
+
+            if (!channels) return;
 
             let html = "";
             const snrValues = [];
             const pbusyValues = [];
 
-            data.channels.forEach(ch => {
+            channels.forEach(ch => {
                 const isPU = ch.pu_state === 1;
                 const cardClass = isPU ? "pu-busy-card" : "free-allocated-card";
                 snrValues.push(ch.snr_est_db);
@@ -418,7 +424,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 pbusyLineChart.update("none");
             }
         } catch (err) {
-            console.warn("Failed to fetch spectrum_channels:", err);
+            console.warn("Failed to render spectrum_channels:", err);
         }
     }
 
@@ -457,6 +463,21 @@ document.addEventListener("DOMContentLoaded", () => {
             if (document.getElementById("kpiUsedPct")) document.getElementById("kpiUsedPct").textContent = `${data.kpis.utilization_pct}%`;
             if (document.getElementById("kpiPendingRequests")) document.getElementById("kpiPendingRequests").textContent = data.kpis.pending_requests;
             if (document.getElementById("kpiAvgBss")) document.getElementById("kpiAvgBss").textContent = data.kpis.avg_bss;
+
+            // Map info metrics
+            if (data.map_info) {
+                if (document.getElementById("mapTotalRegions")) document.getElementById("mapTotalRegions").textContent = data.map_info.total_regions;
+                if (document.getElementById("mapActiveSectors")) document.getElementById("mapActiveSectors").textContent = data.map_info.active_sectors;
+                if (document.getElementById("mapSpectrumPool")) document.getElementById("mapSpectrumPool").textContent = data.map_info.spectrum_pool;
+            }
+
+            // System Status badges
+            if (data.system_status) {
+                if (document.getElementById("statusDrlAgent")) document.getElementById("statusDrlAgent").textContent = data.system_status.drl_agent;
+                if (document.getElementById("statusPoolManager")) document.getElementById("statusPoolManager").textContent = data.system_status.spectrum_pool_manager;
+                if (document.getElementById("statusDb")) document.getElementById("statusDb").textContent = data.system_status.database;
+                if (document.getElementById("statusNetSim")) document.getElementById("statusNetSim").textContent = data.system_status.network_simulation;
+            }
 
             // Render Active Pending Bandwidth Requests Table
             const pendingTableBody = document.getElementById("pendingRequestsTableBody");
@@ -532,9 +553,31 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
+            // Render AI Insights dynamically
+            const insightsContainer = document.getElementById("aiInsightsContainer");
+            if (insightsContainer && data.ai_insights) {
+                let insightsHtml = data.ai_insights.map(item => `
+                    <div class="insight-item">
+                        <span class="insight-check">✅</span>
+                        <div class="insight-text">
+                            <p class="i-title">${item.title}</p>
+                            <span class="i-badge text-green">${item.badge}</span>
+                        </div>
+                    </div>
+                `).join("");
+                insightsHtml += `
+                    <div class="ai-tip-box">
+                        <span class="tip-icon">💡</span>
+                        <p>AI is continuously learning from network conditions to optimize spectrum sharing in real-time.</p>
+                    </div>
+                `;
+                insightsContainer.innerHTML = insightsHtml;
+            }
+
             // Update Analytics & Reports Tab Charts
             if (data.analytics_data) {
                 if (analyticsCompareChart && data.analytics_data.static_vs_dynamic) {
+                    analyticsCompareChart.data.datasets[0].data = data.analytics_data.static_vs_dynamic.static;
                     analyticsCompareChart.data.datasets[1].data = data.analytics_data.static_vs_dynamic.dynamic;
                     analyticsCompareChart.update("none");
                 }
@@ -556,12 +599,12 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             // Update MNO History Chart on MNO Management Page
-            if (mnoHistoryChart && data.utilization_over_time) {
-                mnoHistoryChart.data.labels = data.utilization_over_time.labels;
-                if (data.utilization_over_time.series["Airtel 6G"]) mnoHistoryChart.data.datasets[0].data = data.utilization_over_time.series["Airtel 6G"].map(x => Math.round(x * 6.0));
-                if (data.utilization_over_time.series["Jio 6G"]) mnoHistoryChart.data.datasets[1].data = data.utilization_over_time.series["Jio 6G"].map(x => Math.round(x * 8.5));
-                if (data.utilization_over_time.series["Vi 6G"]) mnoHistoryChart.data.datasets[2].data = data.utilization_over_time.series["Vi 6G"].map(x => Math.round(x * 4.5));
-                if (data.utilization_over_time.series["BSNL 6G"]) mnoHistoryChart.data.datasets[3].data = data.utilization_over_time.series["BSNL 6G"].map(x => Math.round(x * 3.8));
+            if (mnoHistoryChart && data.mno_history_series) {
+                mnoHistoryChart.data.labels = data.mno_history_series.labels;
+                if (data.mno_history_series.series["Airtel 6G"]) mnoHistoryChart.data.datasets[0].data = data.mno_history_series.series["Airtel 6G"];
+                if (data.mno_history_series.series["Jio 6G"]) mnoHistoryChart.data.datasets[1].data = data.mno_history_series.series["Jio 6G"];
+                if (data.mno_history_series.series["Vi 6G"]) mnoHistoryChart.data.datasets[2].data = data.mno_history_series.series["Vi 6G"];
+                if (data.mno_history_series.series["BSNL 6G"]) mnoHistoryChart.data.datasets[3].data = data.mno_history_series.series["BSNL 6G"];
                 mnoHistoryChart.update("none");
             }
 
@@ -627,7 +670,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             // Render 16 Channel Grid & Full Events Audit Trail Table
-            renderFullChannelGrid();
+            renderFullChannelGrid(data.channels);
             renderFullEventsTable(data.audit_events_list);
 
         } catch (err) {

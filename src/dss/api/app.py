@@ -36,12 +36,25 @@ except Exception as err:
     print("Initial PostgreSQL seed warning:", err)
 
 
-# Real-time Streaming Generator Thread
-current_max_step = 4032
+def get_latest_db_step():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(step_idx) FROM channel_obs;")
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return (row[0] if row and row[0] is not None else 4032)
+    except Exception:
+        return 4032
 
+current_max_step = get_latest_db_step()
+
+
+# Real-time Streaming Generator Thread
 def realtime_stream_worker():
     global current_max_step
-    print("Real-Time Spectrum Streaming Worker Started (3-second stream interval)...")
+    print(f"Real-Time Spectrum Streaming Worker Started at Step #{current_max_step + 1} (3-second stream interval)...")
     np.random.seed(42)
     
     while True:
@@ -87,7 +100,6 @@ def realtime_stream_worker():
                 "requested_bw_mhz": requested_bw.astype(np.float32),
             })
 
-
             # 3. Stream record into PostgreSQL
             save_dataset_to_postgresql(channel_records, mno_records)
             print(f"Streamed Live Step {step_idx} into PostgreSQL (Multi-MNO database).")
@@ -128,8 +140,8 @@ def dashboard_data():
         conn = get_connection()
         cursor = conn.cursor()
 
-        # 1. Fetch latest step_idx from PostgreSQL channel_obs table
-        cursor.execute("SELECT MAX(step_idx) FROM channel_obs;")
+        # 1. Fetch latest step_idx that exists in BOTH channel_obs and mno_demand tables
+        cursor.execute("SELECT MAX(c.step_idx) FROM channel_obs c JOIN mno_demand m ON c.step_idx = m.step_idx;")
         latest_step = cursor.fetchone()[0] or current_max_step
 
         # 2. Fetch latest channel observations for latest_step
@@ -139,7 +151,7 @@ def dashboard_data():
             WHERE step_idx = %s 
             ORDER BY channel_id ASC;
         """, (latest_step,))
-        channel_rows = cursor.fetchall()
+        channel_rows = cursor.fetchall() or []
         
         # 3. Fetch latest MNO demands for latest_step
         cursor.execute("""
@@ -148,7 +160,24 @@ def dashboard_data():
             WHERE step_idx = %s 
             ORDER BY mno_id ASC;
         """, (latest_step,))
-        mno_rows = cursor.fetchall()
+        mno_rows = cursor.fetchall() or []
+
+        mno_colors = ["#FF4D4D", "#3B82F6", "#F59E0B", "#A855F7"]
+        mno_names_map = {0: "Airtel 6G", 1: "Jio 6G", 2: "Vi 6G", 3: "BSNL 6G"}
+
+        channels_list = []
+        for r in channel_rows:
+            ch_id, pu_s, noise_e, interf_e, rx_p, snr_e = r
+            channels_list.append({
+                "channel_id": ch_id,
+                "pu_state": pu_s,
+                "noise_est_dbm": round(float(noise_e), 2),
+                "interference_dbm": round(float(interf_e), 2),
+                "rx_power_dbm": round(float(rx_p), 2),
+                "snr_est_db": round(float(snr_e), 2),
+                "p_busy": 0.90 if pu_s == 1 else 0.10,
+                "status": "🔴 PU Occupied" if pu_s == 1 else "🟢 AI Allocated"
+            })
 
         if channel_rows and mno_rows:
             pu_states = np.array([r[1] for r in channel_rows])
@@ -171,9 +200,6 @@ def dashboard_data():
             # Ensure total_used strictly <= 1000.0 MHz and utilization <= 100.0%
             total_used = min(1000.0, float(np.sum(allocated_bw_mhz)))
             utilization_pct = min(100.0, round((total_used / 1000.0) * 100, 1))
-            
-            mno_colors = ["#FF4D4D", "#3B82F6", "#F59E0B", "#A855F7"]
-            mno_names_map = {0: "Airtel 6G", 1: "Jio 6G", 2: "Vi 6G", 3: "BSNL 6G"}
             
             # Dynamic Pending Requests Count & Detailed List
             pending_requests_list = []
@@ -241,6 +267,8 @@ def dashboard_data():
             pu_states = np.zeros(16)
             req_bw = np.array([245, 260, 238, 257])
             allocated_bw_mhz = np.array([240, 250, 230, 250])
+            pending_requests_list = []
+            sat_scores = np.array([0.85, 0.90, 0.82, 0.88])
             mno_performance, spectrum_distribution, bss_comparison = [], [], []
 
         # 4. Fetch historical steps for time series chart directly from PostgreSQL
@@ -304,6 +332,21 @@ def dashboard_data():
             {"time": f"Step #{max(0, latest_step-4)}", "event": "Fairness Optimization", "action": f"Jain Index: {avg_bss}"}
         ]
 
+        # 16 Channel Grid Array
+        channels_list = []
+        for r in channel_rows:
+            ch_id, pu_s, noise_e, interf_e, rx_p, snr_e = r
+            channels_list.append({
+                "channel_id": ch_id,
+                "pu_state": pu_s,
+                "noise_est_dbm": round(float(noise_e), 2),
+                "interference_dbm": round(float(interf_e), 2),
+                "rx_power_dbm": round(float(rx_p), 2),
+                "snr_est_db": round(float(snr_e), 2),
+                "p_busy": 0.90 if pu_s == 1 else 0.10,
+                "status": "🔴 PU Occupied" if pu_s == 1 else "🟢 AI Allocated"
+            })
+
         # AI Engine Dynamic Metrics calculated from live DB step
         mse_loss = round(0.0018 + (float(latest_step % 17) * 0.0001), 4)
         reward_labels = [f"Step #{max(0, latest_step - (10 - i)*3)}" for i in range(11)]
@@ -337,6 +380,17 @@ def dashboard_data():
             }
         }
 
+        mno_history_series = {"Airtel 6G": [], "Jio 6G": [], "Vi 6G": [], "BSNL 6G": []}
+        for s in hist_steps:
+            s_mno = [r for r in hist_rows if r[0] == s]
+            for r in s_mno:
+                name = r[1]
+                if name in mno_history_series:
+                    mno_history_series[name].append(round(float(r[2] * 3.2), 1))
+        for k in mno_history_series:
+            while len(mno_history_series[k]) < len(time_slots):
+                mno_history_series[k].append(300.0)
+
         cursor.close()
         conn.close()
 
@@ -352,10 +406,15 @@ def dashboard_data():
                 "avg_bss": avg_bss,
                 "bss_gain": "+18.4%"
             },
+            "channels": channels_list,
             "pending_requests_list": pending_requests_list,
             "audit_events_list": audit_events_list,
             "mno_detailed": mno_detailed_list,
             "analytics_data": analytics_data,
+            "mno_history_series": {
+                "labels": time_slots,
+                "series": mno_history_series
+            },
             "ai_engine_metrics": {
                 "mse_loss": mse_loss,
                 "pu_interference": "0.00%",
@@ -378,21 +437,21 @@ def dashboard_data():
             "map_info": {
                 "total_regions": 12,
                 "active_sectors": 48,
-                "spectrum_pool": "320 MHz"
+                "spectrum_pool": f"{int(total_used)} / 1,000 MHz"
             },
             "live_events": events,
             "mno_performance": mno_performance,
             "recent_ai_decisions": recent_decisions,
             "ai_insights": [
-                {"type": "prediction", "title": f"Predicted high demand for Jio 6G ({round(float(req_bw[1]), 1)} MHz)", "badge": "Confidence: 94%"},
-                {"type": "suggestion", "title": f"Dynamic Allocation Fairness: J = {avg_bss}", "badge": "Improvement: +18.4% BSS"},
-                {"type": "detection", "title": f"Free Channels Detected: {int(sum(pu_states == 0))}/16", "badge": f"Available Pool: {sum(pu_states == 0)*62.5} MHz"}
+                {"type": "prediction", "title": f"Predicted high demand for Jio 6G ({round(float(req_bw[1]*3.2), 1)} Mbps)", "badge": f"Step #{latest_step}"},
+                {"type": "suggestion", "title": f"Dynamic Allocation Fairness: J = {avg_bss}", "badge": "Gain: +18.4% BSS"},
+                {"type": "detection", "title": f"Free Channels Detected: {int(sum(pu_states == 0))}/16", "badge": f"Available: {int(sum(pu_states == 0)*62.5)} MHz"}
             ],
             "system_status": {
-                "drl_agent": "Running",
-                "spectrum_pool_manager": "Active",
-                "database": f"Connected (PostgreSQL Step #{latest_step})",
-                "network_simulation": "Running"
+                "drl_agent": f"🟢 Running (Step #{latest_step})",
+                "spectrum_pool_manager": "🟢 Active (1,000 MHz Pool)",
+                "database": f"🟢 Connected (PostgreSQL Step #{latest_step})",
+                "network_simulation": "🟢 Running (3s Stream)"
             }
         })
     except Exception as err:
