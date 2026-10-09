@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Based Dynamic Spectrum Sharing for Multi-MNO 6G Networks</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-icon">📡</span>
+                <span class="brand-name">6G DSS Control</span>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <a href="#dashboard" class="menu-item active" data-target="view-dashboard">
+                    <span class="menu-icon">🏠</span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#spectrum" class="menu-item" data-target="view-spectrum">
+                    <span class="menu-icon">📡</span>
+                    <span>Spectrum Overview</span>
+                </a>
+                <a href="#mno" class="menu-item" data-target="view-mno">
+                    <span class="menu-icon">👥</span>
+                    <span>MNO Management</span>
+                </a>
+                <a href="#ai" class="menu-item" data-target="view-ai">
+                    <span class="menu-icon">🤖</span>
+                    <span>AI Agent (DRL)</span>
+                </a>
+                <a href="#requests" class="menu-item" data-target="view-requests">
+                    <span class="menu-icon">📋</span>
+                    <span>Requests & Events</span>
+                </a>
+                <a href="#analytics" class="menu-item" data-target="view-analytics">
+                    <span class="menu-icon">📈</span>
+                    <span>Analytics & Reports</span>
+                </a>
+                <a href="#settings" class="menu-item" data-target="view-settings">
+                    <span class="menu-icon">⚙️</span>
+                    <span>Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-banner">
+                <div class="banner-icon">📡 6G</div>
+                <h4>Next Generation Network</h4>
+                <p>Smarter Together</p>
+                <div class="banner-glow"></div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-title-box">
+                    <div class="header-title-wrapper">
+                        <span class="header-icon">📡</span>
+                        <div>
+                            <h1 id="pageMainTitle">AI-Based Dynamic Spectrum Sharing for Multi-MNO 6G Networks</h1>
+                            <p class="tagline" id="pageSubTitle">Smarter Spectrum | Higher Efficiency | Connected Future</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="live-clock-box">
+                        <span class="clock-icon">🕒</span>
+                        <span id="liveDateTime">-- Oct 2026 --:--:--</span>
+                    </div>
+                    <div class="notification-btn" id="btnNotifications" title="View Notifications">
+                        <span class="bell-icon">🔔</span>
+                        <span class="notif-dot"></span>
+                    </div>
+                    <div class="user-profile" id="btnAdminProfile" title="Click to view Admin Profile Details">
+                        <div class="avatar">👤</div>
+                        <div class="user-info">
+                            <span class="user-name">Admin</span>
+                            <span class="user-role">System Manager</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- PAGE 1: EXECUTIVE DASHBOARD VIEW -->
+            <div id="view-dashboard" class="page-view active">
+                <!-- 5 Top KPI Cards -->
+                <section class="kpi-row">
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Total Spectrum</span>
+                            <div class="kpi-icon icon-purple">📡</div>
+                        </div>
+                        <div class="kpi-value" id="kpiTotalSpectrum">1,000 <span class="unit">MHz</span></div>
+                        <div class="kpi-footer text-muted">Licensed (Available)</div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Used Spectrum</span>
+                            <div class="kpi-icon icon-green">📊</div>
+                        </div>
+                        <div class="kpi-value" id="kpiUsedSpectrum">782 <span class="unit">MHz</span></div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="usedProgress" style="width: 78.2%;"></div>
+                        </div>
+                        <div class="kpi-footer"><span id="kpiUsedPct">78.2%</span> Utilization</div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Active MNOs</span>
+                            <div class="kpi-icon icon-blue">👥</div>
+                        </div>
+                        <div class="kpi-value">4</div>
+                        <div class="mno-dots-legend">
+                            <span class="mno-dot dot-airtel"></span> Airtel 6G
+                            <span class="mno-dot dot-jio"></span> Jio 6G
+                            <span class="mno-dot dot-vi"></span> Vi 6G
+                            <span class="mno-dot dot-bsnl"></span> BSNL 6G
+                        </div>
+                    </div>
+
+                    <div class="kpi-card switch-tab-link" data-target="view-requests" style="cursor: pointer;" title="Click to view Active Pending Requests Queue">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Pending Requests</span>
+                            <div class="kpi-icon icon-amber">📋</div>
+                        </div>
+                        <div class="kpi-value" id="kpiPendingRequests">3</div>
+                        <div class="kpi-footer text-amber">🔸 Waiting for Allocation</div>
+                    </div>
+
+                    <div class="kpi-card highlight-glow">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Avg. BSS (MNOs)</span>
+                            <div class="kpi-icon icon-teal">%</div>
+                        </div>
+                        <div class="kpi-value" id="kpiAvgBss">0.87</div>
+                        <div class="kpi-footer text-green">↑ +18.4% (vs static)</div>
+                    </div>
+                </section>
+
+                <!-- Live 16 RF Channel Map Section (Real-Time 6G Sensing & Occupancy) -->
+                <section class="channel-map-section" style="margin-bottom: 20px;">
+                    <div class="spectrum-heatmap-card">
+                        <div class="card-header">
+                            <h3>📻 Live 16 RF Channel Map (Real-Time VAE-GMM Sensing)</h3>
+                            <div class="map-legend">
+                                <span class="legend-item"><span class="badge pu-busy"></span> 🔴 Primary User Occupied (Protected)</span>
+                                <span class="legend-item"><span class="badge free-allocated"></span> 🟢 Free & AI Allocated to MNOs</span>
+                            </div>
+                        </div>
+                        <div class="channel-grid" id="mainDashboardChannelGrid">
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 00</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>32.4 dB</strong></div><div class="ch-stat">Noise: <strong>-94.8 dBm</strong></div></div>
+                            <div class="ch-card pu-busy-card"><div class="ch-title">Channel 01</div><div class="ch-stat">🔴 PU Occupied</div><div class="ch-stat">P_busy: <strong>0.90</strong></div><div class="ch-stat">SNR: <strong>2.1 dB</strong></div><div class="ch-stat">Noise: <strong>-95.2 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 02</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>28.6 dB</strong></div><div class="ch-stat">Noise: <strong>-96.1 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 03</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>35.1 dB</strong></div><div class="ch-stat">Noise: <strong>-94.3 dBm</strong></div></div>
+                            <div class="ch-card pu-busy-card"><div class="ch-title">Channel 04</div><div class="ch-stat">🔴 PU Occupied</div><div class="ch-stat">P_busy: <strong>0.90</strong></div><div class="ch-stat">SNR: <strong>1.8 dB</strong></div><div class="ch-stat">Noise: <strong>-95.8 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 05</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>24.2 dB</strong></div><div class="ch-stat">Noise: <strong>-94.9 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 06</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>31.0 dB</strong></div><div class="ch-stat">Noise: <strong>-95.5 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 07</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>29.4 dB</strong></div><div class="ch-stat">Noise: <strong>-96.0 dBm</strong></div></div>
+                            <div class="ch-card pu-busy-card"><div class="ch-title">Channel 08</div><div class="ch-stat">🔴 PU Occupied</div><div class="ch-stat">P_busy: <strong>0.90</strong></div><div class="ch-stat">SNR: <strong>2.5 dB</strong></div><div class="ch-stat">Noise: <strong>-95.1 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 09</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>33.8 dB</strong></div><div class="ch-stat">Noise: <strong>-94.7 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 10</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>27.9 dB</strong></div><div class="ch-stat">Noise: <strong>-95.3 dBm</strong></div></div>
+                            <div class="ch-card pu-busy-card"><div class="ch-title">Channel 11</div><div class="ch-stat">🔴 PU Occupied</div><div class="ch-stat">P_busy: <strong>0.90</strong></div><div class="ch-stat">SNR: <strong>1.9 dB</strong></div><div class="ch-stat">Noise: <strong>-96.2 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 12</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>30.2 dB</strong></div><div class="ch-stat">Noise: <strong>-94.6 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 13</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>26.5 dB</strong></div><div class="ch-stat">Noise: <strong>-95.0 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 14</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>34.7 dB</strong></div><div class="ch-stat">Noise: <strong>-94.2 dBm</strong></div></div>
+                            <div class="ch-card free-allocated-card"><div class="ch-title">Channel 15</div><div class="ch-stat">🟢 AI Allocated</div><div class="ch-stat">P_busy: <strong>0.10</strong></div><div class="ch-stat">SNR: <strong>28.1 dB</strong></div><div class="ch-stat">Noise: <strong>-95.7 dBm</strong></div></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Middle Section Grid: Charts, Map, Live Events -->
+                <section class="middle-grid">
+                    <div class="card card-chart-large">
+                        <div class="card-header">
+                            <h3>Spectrum Utilization Over Time</h3>
+                            <select class="select-dropdown">
+                                <option>Last 24 Hours</option>
+                                <option>Live Stream</option>
+                            </select>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="utilizationTimeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card card-map">
+                        <div class="card-header">
+                            <h3>Spectrum Allocation Map</h3>
+                            <span class="badge-tag">Interactive Nodes</span>
+                        </div>
+                        <div class="map-container">
+                            <div class="map-bg">
+                                <div class="map-node node-delhi" title="Delhi NCR - 8 Sectors">
+                                    <span class="ping-circle"></span>
+                                    <span class="node-dot"></span>
+                                    <span class="node-label">Delhi NCR</span>
+                                </div>
+                                <div class="map-node node-mumbai" title="Mumbai - 10 Sectors">
+                                    <span class="ping-circle"></span>
+                                    <span class="node-dot"></span>
+                                    <span class="node-label">Mumbai</span>
+                                </div>
+                                <div class="map-node node-bangalore" title="Bangalore Tech - 12 Sectors">
+                                    <span class="ping-circle"></span>
+                                    <span class="node-dot"></span>
+                                    <span class="node-label">Bangalore</span>
+                                </div>
+                                <div class="map-node node-kolkata" title="Kolkata Metro - 6 Sectors">
+                                    <span class="ping-circle"></span>
+                                    <span class="node-dot"></span>
+                                    <span class="node-label">Kolkata</span>
+                                </div>
+                            </div>
+
+                            <div class="map-stats-panel">
+                                <div class="map-legend-list">
+                                    <span class="leg-item"><span class="leg-dot dot-airtel"></span> Airtel 6G</span>
+                                    <span class="leg-item"><span class="leg-dot dot-jio"></span> Jio 6G</span>
+                                    <span class="leg-item"><span class="leg-dot dot-vi"></span> Vi 6G</span>
+                                    <span class="leg-item"><span class="leg-dot dot-bsnl"></span> BSNL 6G</span>
+                                </div>
+                                <div class="map-metrics">
+                                    <div class="m-stat">
+                                        <span class="m-label">Total Regions</span>
+                                        <span class="m-val">12</span>
+                                    </div>
+                                    <div class="m-stat">
+                                        <span class="m-label">Active Sectors</span>
+                                        <span class="m-val">48</span>
+                                    </div>
+                                    <div class="m-stat">
+                                        <span class="m-label">Spectrum Pool</span>
+                                        <span class="m-val">320 MHz</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card card-events">
+                        <div class="card-header">
+                            <h3>Live Events & Requests</h3>
+                            <a href="#requests" class="view-all-link switch-tab-link" data-target="view-requests">View All</a>
+                        </div>
+                        <div class="events-feed-list" id="eventsFeedList">
+                            <!-- Dynamic Live Events injected by JS -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Lower Grid -->
+                <section class="lower-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Spectrum Distribution</h3>
+                        </div>
+                        <div class="card-body doughnut-body">
+                            <div class="chart-wrapper">
+                                <canvas id="spectrumDistributionChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>BSS Comparison</h3>
+                            <span class="badge-tag">All MNOs</span>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="bssComparisonChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>MNOs' Request & Allocation</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="requestAllocationChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card card-system-status">
+                        <div class="card-header">
+                            <h3>System Status</h3>
+                            <span class="status-online-tag">🟢 Online</span>
+                        </div>
+                        <div class="status-rows-list">
+                            <div class="status-row">
+                                <span class="s-name">🤖 DRL Agent</span>
+                                <span class="s-badge green">🟢 Running</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="s-name">📡 Spectrum Pool Manager</span>
+                                <span class="s-badge green">🟢 Active</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="s-name">🗄️ Database (PostgreSQL)</span>
+                                <span class="s-badge green" id="dbStatusBadge">🟢 Connected</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="s-name">⚡ Network Simulation</span>
+                                <span class="s-badge green">🟢 Running</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Bottom Row Grid -->
+                <section class="bottom-grid">
+                    <div class="card card-table">
+                        <div class="card-header">
+                            <h3>MNO Performance</h3>
+                            <a href="#mno" class="view-all-link switch-tab-link" data-target="view-mno">View MNOs</a>
+                        </div>
+                        <div class="card-body table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>MNO Name</th>
+                                        <th>Used Spectrum</th>
+                                        <th>Total Pool</th>
+                                        <th>Utilization</th>
+                                        <th>BSS</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mnoPerformanceBody">
+                                    <!-- Dynamic MNO Rows Injected by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card card-decisions">
+                        <div class="card-header">
+                            <h3>Recent AI Decisions</h3>
+                            <a href="#ai" class="view-all-link switch-tab-link" data-target="view-ai">View AI Model</a>
+                        </div>
+                        <div class="card-body table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Event</th>
+                                        <th>Action Taken</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aiDecisionsBody">
+                                    <!-- Dynamic AI Decisions Injected by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card card-insights">
+                        <div class="card-header">
+                            <h3>🧠 AI Model Insights</h3>
+                            <a href="#analytics" class="view-all-link switch-tab-link" data-target="view-analytics">Analytics</a>
+                        </div>
+                        <div class="insights-body">
+                            <div class="insight-item">
+                                <span class="insight-check">✅</span>
+                                <div class="insight-text">
+                                    <p class="i-title">Predicted high demand in next 2 hours (Jio 6G - n78)</p>
+                                    <span class="i-badge">Confidence: 92%</span>
+                                </div>
+                            </div>
+                            <div class="insight-item">
+                                <span class="insight-check">✅</span>
+                                <div class="insight-text">
+                                    <p class="i-title">Suggesting reallocation for better fairness</p>
+                                    <span class="i-badge text-green">Improvement: +12% BSS</span>
+                                </div>
+                            </div>
+                            <div class="insight-item">
+                                <span class="insight-check">✅</span>
+                                <div class="insight-text">
+                                    <p class="i-title">Detected underutilized spectrum in Region-3</p>
+                                    <span class="i-badge text-blue">Potential Gain: 18 MHz</span>
+                                </div>
+                            </div>
+
+                            <div class="ai-tip-box">
+                                <span class="tip-icon">💡</span>
+                                <p>AI is continuously learning from network conditions to optimize spectrum sharing in real-time.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PAGE 2: SPECTRUM OVERVIEW VIEW -->
+            <div id="view-spectrum" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>📡 16-Channel Spectrum Sensing & Occupancy Heatmap (VAE-GMM)</h2>
+                    <p>Real-time sensing probabilities (P_busy), SNR (dB), Noise Floor (dBm) and Primary User (PU) occupancy states.</p>
+                </div>
+
+                <div class="spectrum-heatmap-card">
+                    <div class="card-header">
+                        <h3>📻 Live 16 RF Channel Map</h3>
+                        <div class="map-legend">
+                            <span class="legend-item"><span class="badge pu-busy"></span> 🔴 Primary User Occupied (Protected)</span>
+                            <span class="legend-item"><span class="badge free-allocated"></span> 🟢 Free & AI Allocated to MNOs</span>
+                        </div>
+                    </div>
+                    <div class="channel-grid" id="fullChannelGrid">
+                        <!-- Dynamically generated 16 channel cards -->
+                    </div>
+                </div>
+
+                <div class="middle-grid" style="margin-top: 20px; grid-template-columns: 50% 50%;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📊 Channel SNR (Signal-to-Noise Ratio) Distribution</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="snrBarChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>⚡ VAE-GMM Sensing Occupancy Probability (P_busy)</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="pbusyLineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 3: MNO MANAGEMENT VIEW -->
+            <div id="view-mno" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>👥 Mobile Network Operator (MNO) Management & Slicing</h2>
+                    <p>Detailed performance metrics, traffic demand curves, active subscribers, and SLA compliance for 4 MNOs.</p>
+                </div>
+
+                <div class="mno-cards-grid">
+                    <!-- Airtel 6G -->
+                    <div class="card mno-card border-airtel">
+                        <div class="mno-card-header">
+                            <span class="mno-logo-badge bg-airtel">🔴</span>
+                            <div>
+                                <h3>Airtel 6G</h3>
+                                <span class="sub-title">Bharti Airtel Network</span>
+                            </div>
+                        </div>
+                        <div class="mno-card-body">
+                            <div class="mno-stat-item"><span>Active Users:</span> <strong id="mnoAirtelUsers">342,100</strong></div>
+                            <div class="mno-stat-item"><span>Allocated Bandwidth:</span> <strong id="mnoAirtelBw">245 MHz</strong></div>
+                            <div class="mno-stat-item"><span>Traffic Demand:</span> <strong id="mnoAirtelDemand">513 Mbps</strong></div>
+                            <div class="mno-stat-item"><span>BSS Satisfaction:</span> <strong class="text-green" id="mnoAirtelBss">0.82</strong></div>
+                            <div class="mno-stat-item"><span>SLA Compliance:</span> <strong id="mnoAirtelSla">98.4%</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Jio 6G -->
+                    <div class="card mno-card border-jio">
+                        <div class="mno-card-header">
+                            <span class="mno-logo-badge bg-jio">🔵</span>
+                            <div>
+                                <h3>Jio 6G</h3>
+                                <span class="sub-title">Reliance Jio Infocomm</span>
+                            </div>
+                        </div>
+                        <div class="mno-card-body">
+                            <div class="mno-stat-item"><span>Active Users:</span> <strong id="mnoJioUsers">485,900</strong></div>
+                            <div class="mno-stat-item"><span>Allocated Bandwidth:</span> <strong id="mnoJioBw">260 MHz</strong></div>
+                            <div class="mno-stat-item"><span>Traffic Demand:</span> <strong id="mnoJioDemand">728 Mbps</strong></div>
+                            <div class="mno-stat-item"><span>BSS Satisfaction:</span> <strong class="text-green" id="mnoJioBss">0.91</strong></div>
+                            <div class="mno-stat-item"><span>SLA Compliance:</span> <strong id="mnoJioSla">99.1%</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Vi 6G -->
+                    <div class="card mno-card border-vi">
+                        <div class="mno-card-header">
+                            <span class="mno-logo-badge bg-vi">🟡</span>
+                            <div>
+                                <h3>Vi 6G</h3>
+                                <span class="sub-title">Vodafone Idea Limited</span>
+                            </div>
+                        </div>
+                        <div class="mno-card-body">
+                            <div class="mno-stat-item"><span>Active Users:</span> <strong id="mnoViUsers">218,400</strong></div>
+                            <div class="mno-stat-item"><span>Allocated Bandwidth:</span> <strong id="mnoViBw">238 MHz</strong></div>
+                            <div class="mno-stat-item"><span>Traffic Demand:</span> <strong id="mnoViDemand">327 Mbps</strong></div>
+                            <div class="mno-stat-item"><span>BSS Satisfaction:</span> <strong class="text-green" id="mnoViBss">0.76</strong></div>
+                            <div class="mno-stat-item"><span>SLA Compliance:</span> <strong id="mnoViSla">96.8%</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- BSNL 6G -->
+                    <div class="card mno-card border-bsnl">
+                        <div class="mno-card-header">
+                            <span class="mno-logo-badge bg-bsnl">🟣</span>
+                            <div>
+                                <h3>BSNL 6G</h3>
+                                <span class="sub-title">Bharat Sanchar Nigam Ltd</span>
+                            </div>
+                        </div>
+                        <div class="mno-card-body">
+                            <div class="mno-stat-item"><span>Active Users:</span> <strong id="mnoBsnlUsers">195,600</strong></div>
+                            <div class="mno-stat-item"><span>Allocated Bandwidth:</span> <strong id="mnoBsnlBw">257 MHz</strong></div>
+                            <div class="mno-stat-item"><span>Traffic Demand:</span> <strong id="mnoBsnlDemand">293 Mbps</strong></div>
+                            <div class="mno-stat-item"><span>BSS Satisfaction:</span> <strong class="text-green" id="mnoBsnlBss">0.79</strong></div>
+                            <div class="mno-stat-item"><span>SLA Compliance:</span> <strong id="mnoBsnlSla">97.2%</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <h3>📈 MNO Traffic Demand vs AI Spectrum Allocation History</h3>
+                    </div>
+                    <div class="card-body" style="height: 250px;">
+                        <canvas id="mnoHistoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 4: AI AGENT (DRL) VIEW -->
+            <div id="view-ai" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>🤖 Deep Reinforcement Learning (DRL) Spectrum Engine</h2>
+                    <p>PyTorch VAE + GMM sensing, LSTM/GRU forecast models, and Constraint C1-C4 optimizer.</p>
+                </div>
+
+                <div class="kpi-row" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="kpi-card">
+                        <span class="kpi-title">Model Architecture</span>
+                        <div class="kpi-value" style="font-size: 18px;">VAE + GMM + DRL</div>
+                        <div class="kpi-footer text-muted">PyTorch 2.2 Deep Learning</div>
+                    </div>
+                    <div class="kpi-card">
+                        <span class="kpi-title">Forecasting Loss (MSE)</span>
+                        <div class="kpi-value text-green" id="aiMseLoss">0.0024</div>
+                        <div class="kpi-footer">LSTM/GRU 12-Step Horizon</div>
+                    </div>
+                    <div class="kpi-card">
+                        <span class="kpi-title">PU Interference Rate</span>
+                        <div class="kpi-value text-green" id="aiPuInterference">0.00%</div>
+                        <div class="kpi-footer">Strict Protection (C1 &ge; 0.5)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <span class="kpi-title">Fairness Index (J)</span>
+                        <div class="kpi-value text-blue" id="aiFairnessIndex">0.965</div>
+                        <div class="kpi-footer">Constraint C4 Satisfaction</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <h3>🧠 DRL Policy Training & Reward Convergence Curve</h3>
+                        <span id="aiStepBadge" class="badge-tag text-green">🟢 Live Stream Connected</span>
+                    </div>
+                    <div class="card-body" style="height: 250px;">
+                        <canvas id="aiRewardChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 5: REQUESTS & EVENTS VIEW -->
+            <div id="view-requests" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>📋 Real-Time Bandwidth Requests & Event Log Queue</h2>
+                    <p>Live stream of MNO dynamic bandwidth requests, AI spectrum reallocations, and PU state transitions.</p>
+                </div>
+
+                <!-- Active Pending Bandwidth Requests Table -->
+                <div class="card card-table" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <h3>📋 Active Pending Bandwidth Requests (<span id="pendingQueueCountHeader">0</span> MNOs Waiting)</h3>
+                        <span class="badge-tag text-amber">🔸 Dynamic Shortfall Queue</span>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Request ID</th>
+                                    <th>MNO Name</th>
+                                    <th>Requested BW</th>
+                                    <th>Allocated BW</th>
+                                    <th>Unfulfilled Shortfall</th>
+                                    <th>Priority Level</th>
+                                    <th>Queue Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingRequestsTableBody">
+                                <!-- Dynamic Pending Requests Rows Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card card-table">
+                    <div class="card-header">
+                        <h3>Full Events Audit Trail</h3>
+                        <div class="table-actions">
+                            <button class="btn-sm btn-outline">Filter: All</button>
+                            <button class="btn-sm btn-outline">Pending Requests</button>
+                        </div>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Event ID</th>
+                                    <th>Timestamp</th>
+                                    <th>MNO Name</th>
+                                    <th>Event Allocation Detail</th>
+                                    <th>Requested BW</th>
+                                    <th>Allocated BW</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fullEventsTableBody">
+                                <!-- Dynamic Event Log Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 6: ANALYTICS & REPORTS VIEW -->
+            <div id="view-analytics" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>📈 Spectrum Efficiency & Comparative Analytics Reports</h2>
+                    <p>Performance benchmarks comparing Static Spectrum Slicing vs. AI Dynamic Spectrum Sharing.</p>
+                </div>
+
+                <div class="middle-grid" style="grid-template-columns: 50% 50%;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>🏆 Static Slicing vs AI Dynamic Sharing Satisfaction</h3>
+                        </div>
+                        <div class="card-body" style="height: 250px;">
+                            <canvas id="analyticsCompareChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>⚡ Jain's Fairness Index Over Time</h3>
+                        </div>
+                        <div class="card-body" style="height: 250px;">
+                            <canvas id="fairnessTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 7: SETTINGS VIEW -->
+            <div id="view-settings" class="page-view">
+                <div class="sub-header-bar">
+                    <h2>⚙️ System Configuration & Database Settings</h2>
+                    <p>Manage PostgreSQL database connection, real-time streaming intervals, and spectrum pool settings.</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>🗄️ PostgreSQL Database Connection</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="setting-item">
+                            <label>PostgreSQL DATABASE_URL:</label>
+                            <input type="text" class="input-setting" value="postgresql://postgres:Faizan9517@localhost:5432/Multi-MNO" readonly>
+                        </div>
+                        <div class="setting-item" style="margin-top: 14px;">
+                            <label>Real-time Stream Interval:</label>
+                            <select class="select-dropdown">
+                                <option>3 Seconds (Active)</option>
+                                <option>1 Second (Fast)</option>
+                                <option>5 Seconds (Normal)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item" style="margin-top: 14px;">
+                            <label>Target Spectrum Pool Size:</label>
+                            <input type="text" class="input-setting" value="1,000 MHz (16 Channels)" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Admin Profile Modal -->
+    <div id="adminModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>👤 Admin Profile & System Manager Details</h3>
+                <span class="close-modal" id="closeAdminModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="user-profile-large">
+                    <div class="avatar-lg">👤</div>
+                    <div>
+                        <h4>System Administrator</h4>
+                        <p class="role-badge">Super Admin / System Manager</p>
+                    </div>
+                </div>
+                <div class="modal-details-list">
+                    <div class="d-row"><span>User Role:</span> <strong>System Manager</strong></div>
+                    <div class="d-row"><span>Email:</span> <strong>admin@6g-dss.net</strong></div>
+                    <div class="d-row"><span>Permissions:</span> <strong>Full Spectrum Allocation Access</strong></div>
+                    <div class="d-row"><span>Active Session:</span> <strong class="text-green">Active (PostgreSQL Stream Connected)</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Update Script -->
+    <script src="js/app.js"></script>
+</body>
+</html>

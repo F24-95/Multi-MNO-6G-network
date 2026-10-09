@@ -106,3 +106,23 @@ def build_scenario_snapshots(
     # [16 p_busy, 16 snr, 16 int, 16 noise]
     snapshots = np.concatenate([p_busy, snr_s, int_s, noise_s], axis=1).astype(np.float32)
     return snapshots, scaler
+
+
+def build_snapshots_from_df(df: pd.DataFrame) -> tuple[np.ndarray, list]:
+    """Builds (T, 64) snapshot matrix directly from channel observation dataframe."""
+    snr_mat, int_mat, noise_mat = load_raw_rf_matrices(df)
+    scaler = fit_snapshot_scaler(snr_mat, int_mat, noise_mat)
+    snr_s, int_s, noise_s = transform_rf_matrices(snr_mat, int_mat, noise_mat, scaler)
+
+    steps = df["step_idx"].values
+    T = int(steps.max() - steps.min() + 1)
+    C = 16
+    t_idx = steps - steps.min()
+    c_idx = df["channel_id"].values
+    p_busy = np.zeros((T, C), dtype=np.float32)
+    p_busy[t_idx, c_idx] = df["pu_state"].values.astype(np.float32)
+
+    snapshots = np.concatenate([p_busy, snr_s, int_s, noise_s], axis=1).astype(np.float32)
+    ts_list = df[["step_idx", "ts"]].drop_duplicates().sort_values("step_idx")["ts"].tolist()
+    return snapshots, ts_list
+
