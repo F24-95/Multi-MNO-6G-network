@@ -11,16 +11,18 @@ from dss.data_generation.scenarios import get_scenario, list_scenarios
 from dss.data_generation.pu_model import generate_pu_occupancy
 from dss.data_generation.noise_model import generate_noise_and_interference, compute_rx_power_and_snr
 from dss.data_generation.demand_model import generate_mno_demand
+from dss.database.connection import save_dataset_to_db
 
 def generate_dataset(
     scenario_name: str,
     seed: int = 42,
     save: bool = True,
     fault_rate: float = 0.0,
+    save_to_db: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """
-    Simulates ChannelObs and MnoDemand for a given scenario and seed.
-    Returns (channel_obs_df, mno_demand_df, dataset_key_str).
+    Simulate channel observations and MNO demands for a scenario.
+    Returns (channel_obs_df, mno_demand_df, dataset_key).
     """
     cfg = get_config()
     scen = get_scenario(scenario_name)
@@ -147,4 +149,8 @@ def generate_dataset(
         with open(out_dir / "meta.json", "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
 
+    if save_to_db:
+        save_dataset_to_db(channel_obs_df, mno_demand_df)
+
     return channel_obs_df, mno_demand_df, key
+

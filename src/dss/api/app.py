@@ -1,117 +1,212 @@
+import logging
 import os
 import sys
-import time
-import threading
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, request, send_from_directory
 
-# Reconfigure stdout for Windows unicode support
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-
-# Ensure project root is in sys.path
+# Ensure project root is available in module path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dss.data_generation.simulator import generate_dataset
+from dss.common.logging_setup import setup_logger
 from dss.data_generation.scenarios import list_scenarios
-from dss.database.connection import get_connection, get_db_url, init_db_schema, save_dataset_to_postgresql
-from dss.decision_engine import StaticAllocator, AIDynamicAllocator, compute_jain_fairness
+from dss.data_generation.simulator import generate_dataset
+from dss.database.connection import (
+    MNO_NAME_MAP,
+    db_session,
+    get_connection,
+    get_db_url,
+    get_latest_step,
+    init_db_schema,
+    save_dataset_to_postgresql,
+)
+from dss.decision_engine import AIDynamicAllocator, StaticAllocator, compute_jain_fairness
+from dss.services.spectrum_stream import get_stream_worker
+
+logger = setup_logger("dss.api")
 
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
+TOTAL_POOL_MHZ = 1000.0
+CHANNEL_BW_MHZ = 62.5  # 16 channels * 62.5 MHz = 1000 MHz licensed pool
+MNO_COLORS = ["#FF4D4D", "#3B82F6", "#F59E0B", "#A855F7"]
 
 app = Flask(__name__, static_folder=str(DASHBOARD_DIR), static_url_path="")
 
-# Initialize Database Schema & Seed Data
-try:
-    init_db_schema()
-    channel_init_df, mno_init_df, _ = generate_dataset("normal", seed=42, save=False)
-    save_dataset_to_postgresql(channel_init_df, mno_init_df)
-    print("Initialized PostgreSQL Database Multi-MNO with baseline simulation data.")
-except Exception as err:
-    print("Initial PostgreSQL seed warning:", err)
 
-
-def get_latest_db_step():
+def _ensure_baseline_seeded() -> None:
+    """Ensure database schema is created and initial baseline data exists."""
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT MAX(step_idx) FROM channel_obs;")
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        return (row[0] if row and row[0] is not None else 4032)
-    except Exception:
-        return 4032
-
-current_max_step = get_latest_db_step()
+        init_db_schema()
+        latest = get_latest_step()
+        if latest <= 0:
+            c_df, m_df, _ = generate_dataset("normal", seed=42, save=False)
+            save_dataset_to_postgresql(c_df, m_df)
+            logger.info("Database initialized with baseline 14-day simulation data.")
+    except Exception as err:
+        logger.warning("Database seed initialization notice: %s", err)
 
 
-# Real-time Streaming Generator Thread
-def realtime_stream_worker():
-    global current_max_step
-    print(f"Real-Time Spectrum Streaming Worker Started at Step #{current_max_step + 1} (3-second stream interval)...")
-    np.random.seed(42)
-    
-    while True:
-        try:
-            time.sleep(3)  # Generate new step every 3 seconds
-            current_max_step += 1
-            step_idx = current_max_step
-            ts = (datetime.now()).isoformat()
+# Ensure baseline schema exists
+_ensure_baseline_seeded()
 
-            # 1. Simulate 16 RF channels
-            n_channels = 16
-            pu_states = np.random.choice([0, 1], size=n_channels, p=[0.6, 0.4])
-            noise_est = -95.0 + np.random.normal(0, 1.5, n_channels)
-            interference = -100.0 + np.random.normal(0, 2.0, n_channels)
-            rx_power = np.where(pu_states == 1, -65.0 + np.random.normal(0, 3.0, n_channels), noise_est + 2.0)
-            snr_est = rx_power - noise_est
+# Auto-start streaming worker if not in a test runner
+if not os.environ.get("PYTEST_CURRENT_TEST"):
+    stream_worker = get_stream_worker()
+    stream_worker.start()
 
-            channel_records = pd.DataFrame({
-                "step_idx": [step_idx] * n_channels,
-                "ts": [ts] * n_channels,
-                "channel_id": list(range(n_channels)),
-                "pu_state": pu_states.astype(np.int8),
-                "noise_true_dbm": noise_est.astype(np.float32),
-                "noise_est_dbm": noise_est.astype(np.float32),
-                "interference_dbm": interference.astype(np.float32),
-                "rx_power_dbm": rx_power.astype(np.float32),
-                "snr_est_db": snr_est.astype(np.float32),
+
+# ----------------------------------------------------------------------
+# Internal Analytics & Aggregation Helpers
+# ----------------------------------------------------------------------
+
+def _compute_dss_allocations(
+    channel_rows: List[Tuple],
+    mno_rows: List[Tuple]
+) -> Dict[str, Any]:
+    """Compute real-time dynamic spectrum slicing, satisfaction, and shortfall."""
+    if not channel_rows or not mno_rows:
+        return {
+            "total_used": 780.0,
+            "utilization_pct": 78.0,
+            "allocated_bw_mhz": np.array([240.0, 250.0, 240.0, 250.0], dtype=np.float32),
+            "req_bw": np.array([245.0, 260.0, 238.0, 257.0], dtype=np.float32),
+            "sat_scores": np.array([0.98, 0.96, 0.99, 0.97], dtype=np.float32),
+            "avg_bss": 0.98,
+            "pu_states": np.zeros(16, dtype=int),
+            "pending_list": [],
+        }
+
+    pu_states = np.array([r[1] for r in channel_rows], dtype=int)
+    req_bw = np.array([r[4] for r in mno_rows], dtype=np.float32)
+    p_busy = np.where(pu_states == 1, 0.90, 0.10)
+
+    allocator = AIDynamicAllocator(n_channels=16, n_mno=4, p_busy_threshold=0.5)
+    channel_counts = allocator.allocate_step(p_busy, req_bw)
+
+    free_channels = int(np.sum(pu_states == 0))
+    available_mhz = min(TOTAL_POOL_MHZ, free_channels * CHANNEL_BW_MHZ)
+
+    total_allocated_channels = float(np.sum(channel_counts))
+    if total_allocated_channels > 0:
+        allocated_bw_mhz = np.round((channel_counts / total_allocated_channels) * available_mhz, 1)
+    else:
+        allocated_bw_mhz = np.zeros(4, dtype=np.float32)
+
+    total_used = min(TOTAL_POOL_MHZ, float(np.sum(allocated_bw_mhz)))
+    utilization_pct = min(100.0, round((total_used / TOTAL_POOL_MHZ) * 100.0, 1))
+
+    # Calculate shortfall and pending request queue
+    pending_list = []
+    for i in range(4):
+        mno_name = MNO_NAME_MAP.get(i, f"MNO-{i+1}")
+        req = round(float(req_bw[i]), 1)
+        alloc = round(float(allocated_bw_mhz[i]), 1)
+        shortfall = round(req - alloc, 1)
+
+        if shortfall > 5.0:
+            priority = (
+                "🔴 Critical Peak" if shortfall > 50.0
+                else ("🟠 High Load" if shortfall > 20.0 else "🟡 Normal Queue")
+            )
+            pending_list.append({
+                "id": f"REQ-6G-0{i+1}",
+                "mno": mno_name,
+                "requested_bw": f"{req} MHz",
+                "allocated_bw": f"{alloc} MHz",
+                "shortfall": f"{shortfall} MHz",
+                "priority": priority,
+                "status": "Waiting for Allocation"
             })
 
-            # 2. Simulate 4 MNO Demands with dynamic traffic load fluctuations
-            n_mno = 4
-            mno_loads = np.random.uniform(0.3, 1.8, size=n_mno)
-            active_users = (np.random.randint(40, 350, size=n_mno) * mno_loads).astype(np.int32)
-            traffic_demand = active_users * 1.5
-            requested_bw = traffic_demand / 3.2
+    sat_scores = np.minimum(1.0, allocated_bw_mhz / np.maximum(req_bw, 1.0))
+    avg_bss = round(float(compute_jain_fairness(sat_scores)), 2)
 
-            mno_records = pd.DataFrame({
-                "step_idx": [step_idx] * n_mno,
-                "ts": [ts] * n_mno,
-                "mno_id": list(range(n_mno)),
-                "active_users": active_users,
-                "traffic_demand_mbps": traffic_demand.astype(np.float32),
-                "requested_bw_mhz": requested_bw.astype(np.float32),
-            })
-
-            # 3. Stream record into PostgreSQL
-            save_dataset_to_postgresql(channel_records, mno_records)
-            print(f"Streamed Live Step {step_idx} into PostgreSQL (Multi-MNO database).")
-
-        except Exception as e:
-            print("Streaming worker error:", e)
+    return {
+        "total_used": total_used,
+        "utilization_pct": utilization_pct,
+        "allocated_bw_mhz": allocated_bw_mhz,
+        "req_bw": req_bw,
+        "sat_scores": sat_scores,
+        "avg_bss": avg_bss,
+        "pu_states": pu_states,
+        "pending_list": pending_list,
+    }
 
 
-# Start Background Streaming Thread
-streaming_thread = threading.Thread(target=realtime_stream_worker, daemon=True)
-streaming_thread.start()
+def _build_channel_payload(channel_rows: List[Tuple]) -> List[Dict[str, Any]]:
+    """Format raw channel observation rows for the 16 RF sensing grid."""
+    items = []
+    for r in channel_rows:
+        ch_id, pu_state, noise, interf, rx_pow, snr = r
+        is_busy = pu_state == 1
+        items.append({
+            "channel_id": ch_id,
+            "pu_state": pu_state,
+            "noise_est_dbm": round(float(noise), 2),
+            "interference_dbm": round(float(interf), 2),
+            "rx_power_dbm": round(float(rx_pow), 2),
+            "snr_est_db": round(float(snr), 2),
+            "p_busy": 0.90 if is_busy else 0.10,
+            "status": "🔴 PU Occupied" if is_busy else "🟢 AI Allocated"
+        })
+    return items
 
+
+def _build_mno_detailed_stats(
+    mno_rows: List[Tuple],
+    allocated_bw_mhz: np.ndarray,
+    sat_scores: np.ndarray
+) -> Dict[str, Dict[str, str]]:
+    """Build detailed operator metric blocks for MNO management."""
+    stats = {}
+    for i, r in enumerate(mno_rows):
+        mno_id, mno_name, users, demand, _ = r
+        full_name = MNO_NAME_MAP.get(mno_id, mno_name)
+        alloc = round(float(allocated_bw_mhz[i]), 1)
+        bss = round(float(sat_scores[i]), 2)
+        sla = round(min(99.9, 95.0 + bss * 4.9), 1)
+
+        stats[full_name] = {
+            "users": f"{int(users * 1000):,}",
+            "allocated": f"{alloc} MHz",
+            "demand": f"{round(float(demand), 1)} Mbps",
+            "bss": f"{bss}",
+            "sla": f"{sla}%"
+        }
+    return stats
+
+
+def _fetch_history_series(cursor, latest_step: int) -> Tuple[List[str], Dict[str, List[float]]]:
+    """Retrieve historical operator demand series over recent steps."""
+    cursor.execute("""
+        SELECT step_idx, mno_name, requested_bw_mhz
+        FROM mno_demand
+        WHERE step_idx >= %s
+        ORDER BY step_idx ASC, mno_id ASC
+        LIMIT 100;
+    """, (max(0, latest_step - 20),))
+    rows = cursor.fetchall()
+
+    distinct_steps = sorted(list(set(r[0] for r in rows)))[-7:]
+    time_slots = [f"Step #{s}" for s in distinct_steps]
+
+    series = {name: [] for name in MNO_NAME_MAP.values()}
+    for s in distinct_steps:
+        step_records = {r[1]: round(float(r[2] / 3.2), 1) for r in rows if r[0] == s}
+        for name in series:
+            series[name].append(step_records.get(name, 35.0))
+
+    return time_slots, series
+
+
+# ----------------------------------------------------------------------
+# Public Web Routes
+# ----------------------------------------------------------------------
 
 @app.route("/")
 def index():
@@ -120,11 +215,12 @@ def index():
 
 @app.route("/api/health")
 def health():
+    worker = get_stream_worker()
     return jsonify({
         "status": "healthy",
         "database": get_db_url(),
-        "current_step": current_max_step,
-        "streaming": True
+        "current_step": worker.current_step,
+        "streaming": worker.is_running()
     })
 
 
@@ -133,266 +229,149 @@ def scenarios():
     return jsonify({"scenarios": list_scenarios()})
 
 
+@app.route("/api/spectrum_channels")
+def spectrum_channels():
+    """Return raw observations for the 16 RF channels at the latest step."""
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(step_idx) FROM channel_obs;")
+            row = cursor.fetchone()
+            latest_step = row[0] if row and row[0] is not None else get_stream_worker().current_step
+
+            cursor.execute("""
+                SELECT channel_id, pu_state, noise_est_dbm, interference_dbm, rx_power_dbm, snr_est_db
+                FROM channel_obs
+                WHERE step_idx = %s
+                ORDER BY channel_id ASC;
+            """, (latest_step,))
+            rows = cursor.fetchall() or []
+
+        return jsonify({
+            "step_idx": latest_step,
+            "channels": _build_channel_payload(rows)
+        })
+    except Exception as err:
+        logger.error("Error fetching spectrum channels: %s", err)
+        return jsonify({"error": str(err)}), 500
+
+
 @app.route("/api/dashboard_data")
 def dashboard_data():
-    """Dynamically queries PostgreSQL database Multi-MNO and calculates live DSS metrics."""
+    """Consolidated endpoint delivering all real-time metrics to the dashboard."""
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        # 1. Fetch latest step_idx that exists in BOTH channel_obs and mno_demand tables
-        cursor.execute("SELECT MAX(c.step_idx) FROM channel_obs c JOIN mno_demand m ON c.step_idx = m.step_idx;")
-        latest_step = cursor.fetchone()[0] or current_max_step
+            # Query latest synchronized step
+            cursor.execute("""
+                SELECT MAX(c.step_idx)
+                FROM channel_obs c
+                JOIN mno_demand m ON c.step_idx = m.step_idx;
+            """)
+            latest_row = cursor.fetchone()
+            latest_step = (
+                latest_row[0] if latest_row and latest_row[0] is not None
+                else get_stream_worker().current_step
+            )
 
-        # 2. Fetch latest channel observations for latest_step
-        cursor.execute("""
-            SELECT channel_id, pu_state, noise_est_dbm, interference_dbm, rx_power_dbm, snr_est_db 
-            FROM channel_obs 
-            WHERE step_idx = %s 
-            ORDER BY channel_id ASC;
-        """, (latest_step,))
-        channel_rows = cursor.fetchall() or []
-        
-        # 3. Fetch latest MNO demands for latest_step
-        cursor.execute("""
-            SELECT mno_id, mno_name, active_users, traffic_demand_mbps, requested_bw_mhz 
-            FROM mno_demand 
-            WHERE step_idx = %s 
-            ORDER BY mno_id ASC;
-        """, (latest_step,))
-        mno_rows = cursor.fetchall() or []
+            # Retrieve channel observations and MNO demands
+            cursor.execute("""
+                SELECT channel_id, pu_state, noise_est_dbm, interference_dbm, rx_power_dbm, snr_est_db
+                FROM channel_obs
+                WHERE step_idx = %s
+                ORDER BY channel_id ASC;
+            """, (latest_step,))
+            channel_rows = cursor.fetchall() or []
 
-        mno_colors = ["#FF4D4D", "#3B82F6", "#F59E0B", "#A855F7"]
-        mno_names_map = {0: "Airtel 6G", 1: "Jio 6G", 2: "Vi 6G", 3: "BSNL 6G"}
+            cursor.execute("""
+                SELECT mno_id, mno_name, active_users, traffic_demand_mbps, requested_bw_mhz
+                FROM mno_demand
+                WHERE step_idx = %s
+                ORDER BY mno_id ASC;
+            """, (latest_step,))
+            mno_rows = cursor.fetchall() or []
 
-        channels_list = []
-        for r in channel_rows:
-            ch_id, pu_s, noise_e, interf_e, rx_p, snr_e = r
-            channels_list.append({
-                "channel_id": ch_id,
-                "pu_state": pu_s,
-                "noise_est_dbm": round(float(noise_e), 2),
-                "interference_dbm": round(float(interf_e), 2),
-                "rx_power_dbm": round(float(rx_p), 2),
-                "snr_est_db": round(float(snr_e), 2),
-                "p_busy": 0.90 if pu_s == 1 else 0.10,
-                "status": "🔴 PU Occupied" if pu_s == 1 else "🟢 AI Allocated"
+            time_slots, util_over_time = _fetch_history_series(cursor, latest_step)
+
+        alloc_result = _compute_dss_allocations(channel_rows, mno_rows)
+        channels = _build_channel_payload(channel_rows)
+        mno_detailed = _build_mno_detailed_stats(
+            mno_rows,
+            alloc_result["allocated_bw_mhz"],
+            alloc_result["sat_scores"]
+        )
+
+        total_used = alloc_result["total_used"]
+        util_pct = alloc_result["utilization_pct"]
+        avg_bss = alloc_result["avg_bss"]
+        req_bw = alloc_result["req_bw"]
+        allocated_bw = alloc_result["allocated_bw_mhz"]
+
+        # Formulate MNO performance summary table
+        mno_performance = []
+        spectrum_distribution = []
+        bss_comparison = []
+
+        for i in range(4):
+            name = MNO_NAME_MAP.get(i, f"MNO-{i+1}")
+            used = round(float(allocated_bw[i]), 1)
+            util = round((used / 250.0) * 100.0, 1)
+            bss = round(float(alloc_result["sat_scores"][i]), 2)
+            color = MNO_COLORS[i % 4]
+
+            mno_performance.append({
+                "mno": name,
+                "color": color,
+                "used_spectrum": f"{used} MHz",
+                "total_spectrum": "250 MHz",
+                "utilization": f"{util}%",
+                "utilization_num": util,
+                "bss": bss,
+                "status": "Normal"
+            })
+            spectrum_distribution.append({
+                "mno": name,
+                "mhz": used,
+                "pct": round((used / max(total_used, 1.0)) * 100.0, 1),
+                "color": color
+            })
+            bss_comparison.append({
+                "mno": name,
+                "score": bss,
+                "color": color
             })
 
-        if channel_rows and mno_rows:
-            pu_states = np.array([r[1] for r in channel_rows])
-            req_bw = np.array([r[4] for r in mno_rows], dtype=np.float32)
-            p_busy = np.where(pu_states == 1, 0.90, 0.10)
-            
-            # Run AI Dynamic Allocator (returns channel counts per MNO)
-            dynamic_allocator = AIDynamicAllocator(16, 4, p_busy_threshold=0.5)
-            allocated_channels = dynamic_allocator.allocate_step(p_busy, req_bw)
-            
-            # 1 Channel = 62.5 MHz (1,000 MHz / 16 channels)
-            free_channels = int(np.sum(pu_states == 0))
-            max_available_mhz = min(1000.0, free_channels * 62.5)
-            
-            if np.sum(allocated_channels) > 0:
-                allocated_bw_mhz = np.round((allocated_channels / np.sum(allocated_channels)) * max_available_mhz, 1)
-            else:
-                allocated_bw_mhz = np.zeros(4, dtype=np.float32)
-            
-            # Ensure total_used strictly <= 1000.0 MHz and utilization <= 100.0%
-            total_used = min(1000.0, float(np.sum(allocated_bw_mhz)))
-            utilization_pct = min(100.0, round((total_used / 1000.0) * 100, 1))
-            
-            # Dynamic Pending Requests Count & Detailed List
-            pending_requests_list = []
-            for i in range(4):
-                m_name = mno_names_map.get(i, f"MNO-{i+1}")
-                r_bw = round(float(req_bw[i]), 1)
-                a_bw = round(float(allocated_bw_mhz[i]), 1)
-                diff = round(r_bw - a_bw, 1)
-                if diff > 5.0:
-                    priority = "🔴 Critical Peak" if diff > 60.0 else ("🟠 High Load" if diff > 25.0 else "🟡 Normal Queue")
-                    pending_requests_list.append({
-                        "id": f"REQ-6G-0{i+1}",
-                        "mno": m_name,
-                        "requested_bw": f"{r_bw} MHz",
-                        "allocated_bw": f"{a_bw} MHz",
-                        "shortfall": f"{diff} MHz",
-                        "priority": priority,
-                        "status": "🔸 Waiting for Allocation"
-                    })
-            
-            pending_requests = len(pending_requests_list)
-
-            sat_scores = np.minimum(1.0, allocated_bw_mhz / np.maximum(req_bw, 1.0))
-            avg_bss = round(float(compute_jain_fairness(sat_scores)), 2)
-            
-            mno_performance = []
-            spectrum_distribution = []
-            bss_comparison = []
-            
-            for i, r in enumerate(mno_rows):
-                mno_id, mno_name, users, demand, req = r
-                full_mno_name = mno_names_map.get(mno_id, mno_name)
-                used = round(float(allocated_bw_mhz[i]), 1)
-                util = round((used / 250.0) * 100, 1)
-                bss = round(float(sat_scores[i]), 2)
-                
-                mno_performance.append({
-                    "mno": full_mno_name,
-                    "color": mno_colors[i % 4],
-                    "used_spectrum": f"{used} MHz",
-                    "total_spectrum": "250 MHz",
-                    "utilization": f"{util}%",
-                    "utilization_num": util,
-                    "bss": bss,
-                    "status": "Normal"
-                })
-                
-                spectrum_distribution.append({
-                    "mno": full_mno_name,
-                    "mhz": used,
-                    "pct": round((used / max(total_used, 1.0)) * 100, 1),
-                    "color": mno_colors[i % 4]
-                })
-                
-                bss_comparison.append({
-                    "mno": full_mno_name,
-                    "score": bss,
-                    "color": mno_colors[i % 4]
-                })
-        else:
-            total_used = 782.0
-            utilization_pct = 78.2
-            pending_requests = 2
-            avg_bss = 0.87
-            pu_states = np.zeros(16)
-            req_bw = np.array([245, 260, 238, 257])
-            allocated_bw_mhz = np.array([240, 250, 230, 250])
-            pending_requests_list = []
-            sat_scores = np.array([0.85, 0.90, 0.82, 0.88])
-            mno_performance, spectrum_distribution, bss_comparison = [], [], []
-
-        # 4. Fetch historical steps for time series chart directly from PostgreSQL
-        cursor.execute("""
-            SELECT step_idx, mno_name, requested_bw_mhz, ts 
-            FROM mno_demand 
-            WHERE step_idx >= %s 
-            ORDER BY step_idx ASC, mno_id ASC 
-            LIMIT 100;
-        """, (max(0, latest_step - 20),))
-        hist_rows = cursor.fetchall()
-        
-        hist_steps = sorted(list(set([r[0] for r in hist_rows])))[-7:]
-        time_slots = [f"Step #{s}" for s in hist_steps]
-        
-        util_over_time = {"Airtel 6G": [], "Jio 6G": [], "Vi 6G": [], "BSNL 6G": []}
-        for s in hist_steps:
-            s_mno = [r for r in hist_rows if r[0] == s]
-            for r in s_mno:
-                name = r[1]
-                if name in util_over_time:
-                    util_over_time[name].append(round(float(r[2] / 3.2), 1))
-        
-        for k in util_over_time:
-            while len(util_over_time[k]) < len(time_slots):
-                util_over_time[k].append(30.0)
-
-        # 5. Live Audit Events generated from real DB steps
-        audit_events_list = []
+        # Recent audit events
+        audit_events = []
         for i in range(6):
             step_num = latest_step - i
             if step_num < 0:
                 continue
             m_idx = i % 4
-            m_name = mno_names_map[m_idx]
-            req_v = round(float(req_bw[m_idx]) + (i * 4.2), 1)
-            alloc_v = round(float(allocated_bw_mhz[m_idx]), 1)
-            audit_events_list.append({
+            m_name = MNO_NAME_MAP.get(m_idx, f"MNO-{m_idx+1}")
+            req_v = round(float(req_bw[m_idx]) + (i * 3.5), 1)
+            alloc_v = round(float(allocated_bw[m_idx]), 1)
+            audit_events.append({
                 "id": f"#EVT-6G-{step_num}",
-                "time": f"Step #{step_num} ({i*3}s ago)",
+                "time": f"Step #{step_num} ({i * 3}s ago)",
                 "mno": m_name,
-                "detail": f"AI Allocated {alloc_v} MHz spectrum slice to {m_name} (Traffic Demand: {req_v} MHz)",
+                "detail": f"AI Allocated {alloc_v} MHz slice to {m_name} (Demand: {req_v} MHz)",
                 "requested": f"{req_v} MHz",
                 "allocated": f"{alloc_v} MHz",
                 "status": "🟢 AI Allocated" if alloc_v > 0 else "🔴 PU Protected"
             })
 
-        events = [
-            {"icon": "🗄️", "title": f"PostgreSQL Sync (Step #{latest_step})", "detail": f"Queried 16 Channel & 4 MNO records from DB", "time": "Just now", "type": "info"},
-            {"icon": "⚡", "title": f"MNO Demand Update (Jio 6G)", "detail": f"Real-time demand: {round(float(req_bw[1]), 1)} MHz", "time": "3 sec ago", "type": "warning"},
-            {"icon": "🤖", "title": "AI Allocation Optimizer", "detail": f"Allocated {int(total_used)} MHz across 4 MNOs (Jain J={avg_bss})", "time": "6 sec ago", "type": "purple"},
-            {"icon": "📡", "title": "PU Spectrum Sensing", "detail": f"{int(sum(pu_states == 1))} Channels occupied by Primary User", "time": "9 sec ago", "type": "danger"},
-            {"icon": "✅", "title": "Constraint C1-C4 Audit", "detail": "Zero PU interference detected", "time": "12 sec ago", "type": "success"}
-        ]
-
-        recent_decisions = [
-            {"time": f"Step #{latest_step}", "event": "Real-time AI Allocation", "action": f"Allocated {int(total_used)} MHz across MNOs"},
-            {"time": f"Step #{max(0, latest_step-1)}", "event": "Jio 6G Demand Surge", "action": f"Allocated {round(float(allocated_bw_mhz[1]), 1)} MHz"},
-            {"time": f"Step #{max(0, latest_step-2)}", "event": "Airtel 6G Traffic Request", "action": f"Allocated {round(float(allocated_bw_mhz[0]), 1)} MHz"},
-            {"time": f"Step #{max(0, latest_step-3)}", "event": "PU State Shift", "action": "Protected PU channels (P_busy >= 0.5)"},
-            {"time": f"Step #{max(0, latest_step-4)}", "event": "Fairness Optimization", "action": f"Jain Index: {avg_bss}"}
-        ]
-
-        # 16 Channel Grid Array
-        channels_list = []
-        for r in channel_rows:
-            ch_id, pu_s, noise_e, interf_e, rx_p, snr_e = r
-            channels_list.append({
-                "channel_id": ch_id,
-                "pu_state": pu_s,
-                "noise_est_dbm": round(float(noise_e), 2),
-                "interference_dbm": round(float(interf_e), 2),
-                "rx_power_dbm": round(float(rx_p), 2),
-                "snr_est_db": round(float(snr_e), 2),
-                "p_busy": 0.90 if pu_s == 1 else 0.10,
-                "status": "🔴 PU Occupied" if pu_s == 1 else "🟢 AI Allocated"
-            })
-
-        # AI Engine Dynamic Metrics calculated from live DB step
+        # AI DRL metrics
         mse_loss = round(0.0018 + (float(latest_step % 17) * 0.0001), 4)
-        reward_labels = [f"Step #{max(0, latest_step - (10 - i)*3)}" for i in range(11)]
+        reward_labels = [f"Step #{max(0, latest_step - (10 - i) * 3)}" for i in range(11)]
         reward_series = [round(115.0 + float(i * 3.5) + float((latest_step + i) % 5), 1) for i in range(11)]
 
-        # MNO Cards Detailed Live Stats
-        mno_detailed_list = {}
-        for i, r in enumerate(mno_rows):
-            mno_id, mno_name, users, demand, req = r
-            full_name = mno_names_map.get(mno_id, mno_name)
-            used = round(float(allocated_bw_mhz[i]), 1)
-            bss = round(float(sat_scores[i]), 2)
-            mno_detailed_list[full_name] = {
-                "users": f"{int(users * 1000):,}",
-                "allocated": f"{used} MHz",
-                "demand": f"{round(float(demand), 1)} Mbps",
-                "bss": f"{bss}",
-                "sla": f"{round(min(99.9, 95.0 + bss * 4.9), 1)}%"
-            }
-
-        # Analytics Comparison Data
-        analytics_data = {
-            "static_vs_dynamic": {
-                "labels": ["Spectrum Utilization %", "Demand Satisfaction %", "Fairness Index (J*100)"],
-                "static": [45.2, 58.4, 62.0],
-                "dynamic": [utilization_pct, round(float(np.mean(sat_scores))*100, 1), round(avg_bss * 100, 1)]
-            },
-            "fairness_trend": {
-                "labels": time_slots,
-                "series": [round(min(0.99, avg_bss - 0.02 + float((s % 5) * 0.01)), 2) for s in hist_steps]
-            }
+        # Scaled MNO demand history for Chart.js
+        mno_history_series = {
+            name: [round(val * 8.0, 1) for val in vals]
+            for name, vals in util_over_time.items()
         }
-
-        mno_history_series = {"Airtel 6G": [], "Jio 6G": [], "Vi 6G": [], "BSNL 6G": []}
-        for s in hist_steps:
-            s_mno = [r for r in hist_rows if r[0] == s]
-            for r in s_mno:
-                name = r[1]
-                if name in mno_history_series:
-                    mno_history_series[name].append(round(float(r[2] * 3.2), 1))
-        for k in mno_history_series:
-            while len(mno_history_series[k]) < len(time_slots):
-                mno_history_series[k].append(300.0)
-
-        cursor.close()
-        conn.close()
 
         return jsonify({
             "timestamp": datetime.now().strftime("%d %b %Y %H:%M:%S"),
@@ -400,17 +379,31 @@ def dashboard_data():
             "kpis": {
                 "total_spectrum": "1,000 MHz",
                 "used_spectrum": f"{int(total_used)} MHz",
-                "utilization_pct": utilization_pct,
+                "utilization_pct": util_pct,
                 "active_mnos": 4,
-                "pending_requests": pending_requests,
+                "pending_requests": len(alloc_result["pending_list"]),
                 "avg_bss": avg_bss,
                 "bss_gain": "+18.4%"
             },
-            "channels": channels_list,
-            "pending_requests_list": pending_requests_list,
-            "audit_events_list": audit_events_list,
-            "mno_detailed": mno_detailed_list,
-            "analytics_data": analytics_data,
+            "channels": channels,
+            "pending_requests_list": alloc_result["pending_list"],
+            "audit_events_list": audit_events,
+            "mno_detailed": mno_detailed,
+            "analytics_data": {
+                "static_vs_dynamic": {
+                    "labels": ["Spectrum Utilization %", "Demand Satisfaction %", "Fairness Index (J*100)"],
+                    "static": [45.2, 58.4, 62.0],
+                    "dynamic": [
+                        util_pct,
+                        round(float(np.mean(alloc_result["sat_scores"])) * 100.0, 1),
+                        round(avg_bss * 100.0, 1)
+                    ]
+                },
+                "fairness_trend": {
+                    "labels": time_slots,
+                    "series": [round(min(0.99, avg_bss - 0.02 + float((s % 5) * 0.01)), 2) for s in range(len(time_slots))]
+                }
+            },
             "mno_history_series": {
                 "labels": time_slots,
                 "series": mno_history_series
@@ -422,7 +415,6 @@ def dashboard_data():
                 "reward_labels": reward_labels,
                 "reward_series": reward_series
             },
-
             "spectrum_distribution": spectrum_distribution,
             "bss_comparison": bss_comparison,
             "utilization_over_time": {
@@ -431,21 +423,32 @@ def dashboard_data():
             },
             "requests_vs_allocation": {
                 "labels": time_slots,
-                "requests": [round(float(x), 1) for x in req_bw.tolist()],
-                "allocated": [round(float(x), 1) for x in allocated_bw_mhz.tolist()]
+                "requests": [round(float(x), 1) for x in req_bw],
+                "allocated": [round(float(x), 1) for x in allocated_bw]
             },
             "map_info": {
                 "total_regions": 12,
                 "active_sectors": 48,
                 "spectrum_pool": f"{int(total_used)} / 1,000 MHz"
             },
-            "live_events": events,
+            "live_events": [
+                {"icon": "🗄️", "title": f"PostgreSQL Sync (Step #{latest_step})", "detail": "Queried live records from Multi-MNO DB", "time": "Just now", "type": "info"},
+                {"icon": "⚡", "title": "MNO Demand Inflow", "detail": f"Real-time demand: {round(float(req_bw[1]), 1)} MHz", "time": "3s ago", "type": "warning"},
+                {"icon": "🤖", "title": "AI Allocation Optimizer", "detail": f"Optimized {int(total_used)} MHz across 4 MNOs (Jain J={avg_bss})", "time": "6s ago", "type": "purple"},
+                {"icon": "📡", "title": "PU Spectrum Sensing", "detail": f"{int(sum(alloc_result['pu_states'] == 1))}/16 channels occupied by Primary User", "time": "9s ago", "type": "danger"},
+                {"icon": "✅", "title": "Constraint C1-C4 Audit", "detail": "PU protection satisfied without SLA violations", "time": "12s ago", "type": "success"}
+            ],
             "mno_performance": mno_performance,
-            "recent_ai_decisions": recent_decisions,
+            "recent_ai_decisions": [
+                {"time": f"Step #{latest_step}", "event": "Real-time AI Slicing", "action": f"Allocated {int(total_used)} MHz across 4 operators"},
+                {"time": f"Step #{max(0, latest_step - 1)}", "event": "Peak Traffic Demand Shift", "action": f"Adjusted slice for Jio 6G to {round(float(allocated_bw[1]), 1)} MHz"},
+                {"time": f"Step #{max(0, latest_step - 2)}", "event": "PU State Shift", "action": "Protected PU channels (P_busy >= 0.5)"},
+                {"time": f"Step #{max(0, latest_step - 3)}", "event": "Fairness Balancing", "action": f"Achieved Jain Index J={avg_bss}"}
+            ],
             "ai_insights": [
-                {"type": "prediction", "title": f"Predicted high demand for Jio 6G ({round(float(req_bw[1]*3.2), 1)} Mbps)", "badge": f"Step #{latest_step}"},
+                {"type": "prediction", "title": f"Predicted peak demand for Jio 6G ({round(float(req_bw[1] * 3.2), 1)} Mbps)", "badge": f"Step #{latest_step}"},
                 {"type": "suggestion", "title": f"Dynamic Allocation Fairness: J = {avg_bss}", "badge": "Gain: +18.4% BSS"},
-                {"type": "detection", "title": f"Free Channels Detected: {int(sum(pu_states == 0))}/16", "badge": f"Available: {int(sum(pu_states == 0)*62.5)} MHz"}
+                {"type": "detection", "title": f"Free Channels Detected: {int(sum(alloc_result['pu_states'] == 0))}/16", "badge": f"Available: {int(sum(alloc_result['pu_states'] == 0) * CHANNEL_BW_MHZ)} MHz"}
             ],
             "system_status": {
                 "drl_agent": f"🟢 Running (Step #{latest_step})",
@@ -455,64 +458,25 @@ def dashboard_data():
             }
         })
     except Exception as err:
-        print("Error fetching PostgreSQL dashboard data:", err)
+        logger.error("Error generating dashboard payload: %s", err, exc_info=True)
         return jsonify({"error": str(err)}), 500
-
-
-@app.route("/api/spectrum_channels")
-def spectrum_channels():
-    """Returns real-time 16 RF channel observations directly from PostgreSQL database."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT MAX(step_idx) FROM channel_obs;")
-        latest_step = cursor.fetchone()[0] or current_max_step
-
-        cursor.execute("""
-            SELECT channel_id, pu_state, noise_est_dbm, interference_dbm, rx_power_dbm, snr_est_db 
-            FROM channel_obs 
-            WHERE step_idx = %s 
-            ORDER BY channel_id ASC;
-        """, (latest_step,))
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        channels = []
-        for r in rows:
-            ch_id, pu_state, noise, interf, rx_pow, snr = r
-            channels.append({
-                "channel_id": ch_id,
-                "pu_state": pu_state,
-                "noise_est_dbm": round(float(noise), 2),
-                "interference_dbm": round(float(interf), 2),
-                "rx_power_dbm": round(float(rx_pow), 2),
-                "snr_est_db": round(float(snr), 2),
-                "p_busy": 0.90 if pu_state == 1 else 0.10,
-                "status": "🔴 PU Occupied" if pu_state == 1 else "🟢 AI Allocated"
-            })
-
-        return jsonify({"step_idx": latest_step, "channels": channels})
-    except Exception as err:
-        return jsonify({"error": str(err)}), 500
-
-
 
 
 @app.route("/api/metrics")
 def metrics():
+    """Benchmark comparative performance between static slicing and AI dynamic sharing."""
     scenario = request.args.get("scenario", "normal")
     channel_df, mno_df, _ = generate_dataset(scenario, seed=42, save=False)
 
     n_steps = min(288, int(channel_df["step_idx"].max() + 1))
-    pu_state_mat = channel_df[channel_df["step_idx"] < n_steps].pivot(
+    pu_mat = channel_df[channel_df["step_idx"] < n_steps].pivot(
         index="step_idx", columns="channel_id", values="pu_state"
     ).values
-    req_bw_mat = mno_df[mno_df["step_idx"] < n_steps].pivot(
+    req_mat = mno_df[mno_df["step_idx"] < n_steps].pivot(
         index="step_idx", columns="mno_id", values="requested_bw_mhz"
     ).values
 
-    p_busy_mat = np.where(pu_state_mat == 1, 0.90, 0.10)
+    p_busy_mat = np.where(pu_mat == 1, 0.90, 0.10)
 
     static_allocator = StaticAllocator(16, 4)
     dynamic_allocator = AIDynamicAllocator(16, 4, p_busy_threshold=0.5)
@@ -521,25 +485,26 @@ def metrics():
     s_jains, d_jains = [], []
 
     for t in range(n_steps):
-        s_a = static_allocator.allocate_step(p_busy_mat[t], req_bw_mat[t])
-        d_a = dynamic_allocator.allocate_step(p_busy_mat[t], req_bw_mat[t])
+        s_a = static_allocator.allocate_step(p_busy_mat[t], req_mat[t])
+        d_a = dynamic_allocator.allocate_step(p_busy_mat[t], req_mat[t])
         s_allocs.append(s_a)
         d_allocs.append(d_a)
 
-        s_sat = np.minimum(1.0, s_a / np.maximum(req_bw_mat[t], 1.0))
-        d_sat = np.minimum(1.0, d_a / np.maximum(req_bw_mat[t], 1.0))
+        s_sat = np.minimum(1.0, s_a / np.maximum(req_mat[t], 1.0))
+        d_sat = np.minimum(1.0, d_a / np.maximum(req_mat[t], 1.0))
         s_jains.append(compute_jain_fairness(s_sat))
         d_jains.append(compute_jain_fairness(d_sat))
 
     s_allocs = np.array(s_allocs)
     d_allocs = np.array(d_allocs)
 
-    s_sat_pct = float(np.mean(np.minimum(1.0, s_allocs / np.maximum(req_bw_mat, 1.0))) * 100)
-    d_sat_pct = float(np.mean(np.minimum(1.0, d_allocs / np.maximum(req_bw_mat, 1.0))) * 100)
+    s_sat_pct = float(np.mean(np.minimum(1.0, s_allocs / np.maximum(req_mat, 1.0))) * 100.0)
+    d_sat_pct = float(np.mean(np.minimum(1.0, d_allocs / np.maximum(req_mat, 1.0))) * 100.0)
 
+    worker = get_stream_worker()
     return jsonify({
         "scenario": scenario,
-        "current_max_step": current_max_step,
+        "current_max_step": worker.current_step,
         "static_satisfaction": round(s_sat_pct, 2),
         "dynamic_satisfaction": round(d_sat_pct, 2),
         "static_jain_fairness": round(float(np.mean(s_jains)), 4),
@@ -550,29 +515,32 @@ def metrics():
 
 @app.route("/api/allocation")
 def allocation():
+    """Return sequential dynamic allocation matrix for scenario testing."""
     scenario = request.args.get("scenario", "normal")
     channel_df, mno_df, _ = generate_dataset(scenario, seed=42, save=False)
 
     n_steps = 100
-    pu_state_mat = channel_df[channel_df["step_idx"] < n_steps].pivot(
+    pu_mat = channel_df[channel_df["step_idx"] < n_steps].pivot(
         index="step_idx", columns="channel_id", values="pu_state"
     ).values
-    req_bw_mat = mno_df[mno_df["step_idx"] < n_steps].pivot(
+    req_mat = mno_df[mno_df["step_idx"] < n_steps].pivot(
         index="step_idx", columns="mno_id", values="requested_bw_mhz"
     ).values
-    p_busy_mat = np.where(pu_state_mat == 1, 0.90, 0.10)
+    p_busy_mat = np.where(pu_mat == 1, 0.90, 0.10)
 
-    dynamic_allocator = AIDynamicAllocator(16, 4)
-    d_allocs = [dynamic_allocator.allocate_step(p_busy_mat[t], req_bw_mat[t]).tolist() for t in range(n_steps)]
+    allocator = AIDynamicAllocator(16, 4)
+    allocs = [allocator.allocate_step(p_busy_mat[t], req_mat[t]).tolist() for t in range(n_steps)]
 
+    worker = get_stream_worker()
     return jsonify({
         "steps": list(range(n_steps)),
-        "current_max_step": current_max_step,
-        "requested_bw": req_bw_mat.tolist(),
-        "allocated_bw": d_allocs
+        "current_max_step": worker.current_step,
+        "requested_bw": req_mat.tolist(),
+        "allocated_bw": allocs
     })
 
 
 if __name__ == "__main__":
+    worker = get_stream_worker()
+    worker.start()
     app.run(host="0.0.0.0", port=5000, debug=False)
-
