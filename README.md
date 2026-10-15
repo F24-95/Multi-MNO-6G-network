@@ -60,7 +60,7 @@ cd "c:\Users\mohd faizan\Documents\college project\Multi-MNO 6G network"
 ### Step 2: Create & Activate Virtual Environment
 - **Windows (PowerShell)**:
   ```powershell
-  python -m venv .venv
+  
   .\.venv\Scripts\Activate.ps1
   ```
 - **Linux / macOS (Bash)**:
@@ -77,7 +77,7 @@ pip install -r requirements.txt
 ### Step 4: Configure Database (`.env`)
 Create or edit `.env` in the project root:
 ```ini
-DATABASE_URL=postgresql://postgres:Faizan9517@localhost:5432/Multi-MNO
+DATABASE_URL=postgresql://postgres:password@localhost:5432/db_name
 PORT=5000
 FLASK_ENV=development
 ```

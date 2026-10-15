@@ -2,6 +2,7 @@ numpy
 pandas
 scipy
 scikit-learn
+torch
 pyarrow
 pyyaml
 joblib
@@ -11,3 +12,4 @@ flask
 pytest
 matplotlib
 jupyter
+seaborn

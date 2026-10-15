@@ -41,6 +41,63 @@ def build_sensing_arrays(
     return np.concatenate(X_list), np.concatenate(y_list)
 
 
+def train_vae(
+    model: VAE,
+    X_train: np.ndarray,
+    X_val: np.ndarray = None,
+    epochs: int = 25,
+    batch_size: int = 256,
+    lr: float = 1e-3,
+    device: str = "cpu",
+    beta: float = 1.0,
+    kl_warmup_epochs: int = 10,
+) -> tuple[VAE, dict]:
+    """
+    Trains a VAE model in-memory with mini-batching and ELBO loss tracking.
+    Compatible with notebook usage and interactive experimentation.
+    Returns:
+        (model, history) where history is a dict with 'train_loss' and 'val_loss' lists.
+    """
+    dev = torch.device(device)
+    model.to(dev)
+    optim = torch.optim.Adam(model.parameters(), lr=lr)
+
+    X_t = torch.tensor(X_train, dtype=torch.float32, device=dev)
+    Xv_t = torch.tensor(X_val, dtype=torch.float32, device=dev) if X_val is not None else None
+
+    history = {"train_loss": [], "val_loss": []}
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        kl_w = min(1.0, epoch / max(1, kl_warmup_epochs))
+
+        idx = torch.randperm(len(X_t))
+        ep_loss = 0.0
+        n_batches = 0
+
+        for i in range(0, len(X_t), batch_size):
+            batch = X_t[idx[i : i + batch_size]]
+            optim.zero_grad()
+            mu, log_var, z, x_hat = model(batch)
+            loss, _, _ = vae_loss(batch, x_hat, mu, log_var, beta=beta, kl_weight=kl_w)
+            loss.backward()
+            optim.step()
+            ep_loss += loss.item()
+            n_batches += 1
+
+        avg_train_loss = ep_loss / max(1, n_batches)
+        history["train_loss"].append(avg_train_loss)
+
+        if Xv_t is not None:
+            model.eval()
+            with torch.no_grad():
+                mu_v, lv_v, _, xh_v = model(Xv_t)
+                val_loss, _, _ = vae_loss(Xv_t, xh_v, mu_v, lv_v, beta=beta, kl_weight=1.0)
+                history["val_loss"].append(val_loss.item())
+
+    return model, history
+
+
 def train_vae_gmm(
     seed: int = 42,
     version: str = "v001",

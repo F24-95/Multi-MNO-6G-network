@@ -76,7 +76,64 @@ def train_autoencoder(
     lr: float = 1e-3,
     latent_dim: int = 8,
     corruption_noise_std: float = 0.05,
-) -> dict:
+    model: Autoencoder = None,
+    X_train: np.ndarray = None,
+    X_val: np.ndarray = None,
+    epochs: int = None,
+    device: str = "cpu",
+    **kwargs,
+) -> dict | tuple[Autoencoder, dict]:
+    # In-memory training support for notebooks and interactive experiments
+    if model is not None or X_train is not None:
+        total_epochs = epochs or max_epochs
+        dev = torch.device(device)
+        if model is None:
+            model = Autoencoder(
+                input_dim=X_train.shape[1],
+                latent_dim=latent_dim,
+                corruption_noise_std=corruption_noise_std,
+            )
+        model.to(dev)
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        criterion = nn.MSELoss()
+
+        X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device=dev)
+        X_val_tensor = torch.tensor(X_val, dtype=torch.float32, device=dev) if X_val is not None else None
+
+        history = {"train_loss": [], "val_loss": []}
+
+        for epoch in range(1, total_epochs + 1):
+            model.train()
+            permutation = torch.randperm(len(X_train_tensor))
+            epoch_loss = 0.0
+            n_batches = 0
+
+            for i in range(0, len(X_train_tensor), batch_size):
+                indices = permutation[i : i + batch_size]
+                batch = X_train_tensor[indices]
+
+                optimizer.zero_grad()
+                z, x_hat = model(batch)
+                loss = criterion(x_hat, batch)
+                loss.backward()
+                optimizer.step()
+
+                epoch_loss += loss.item()
+                n_batches += 1
+
+            train_loss = epoch_loss / max(1, n_batches)
+            history["train_loss"].append(train_loss)
+
+            if X_val_tensor is not None:
+                model.eval()
+                with torch.no_grad():
+                    _, x_hat_val = model(X_val_tensor)
+                    val_loss = criterion(x_hat_val, X_val_tensor).item()
+                    history["val_loss"].append(val_loss)
+
+        return model, history
+
     set_all_seeds(seed)
     scenarios = list_scenarios()
 

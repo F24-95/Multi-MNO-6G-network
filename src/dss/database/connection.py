@@ -91,11 +91,6 @@ def init_db_schema(db_url: Optional[str] = None) -> None:
             );
         """)
 
-        try:
-            cursor.execute("ALTER TABLE mno_demand ADD COLUMN IF NOT EXISTS mno_name VARCHAR(50) DEFAULT 'Airtel 6G';")
-        except Exception:
-            pass
-
 
 def get_latest_step(db_url: Optional[str] = None) -> int:
     """

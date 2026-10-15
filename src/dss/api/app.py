@@ -55,7 +55,7 @@ def _ensure_baseline_seeded() -> None:
 _ensure_baseline_seeded()
 
 # Auto-start streaming worker if not in a test runner
-if not os.environ.get("PYTEST_CURRENT_TEST"):
+if not os.environ.get("PYTEST_CURRENT_TEST") and "pytest" not in sys.modules:
     stream_worker = get_stream_worker()
     stream_worker.start()
 
